@@ -16,9 +16,7 @@
       <button data-tab="gear" class="active" data-i18n-html="<i>⚔</i>My gear"><i>⚔</i>My gear</button>
       <button data-tab="char" data-i18n-html="<i>☰</i>Character"><i>☰</i>Character</button>
       <button data-tab="passives" data-i18n-html="<i>❖</i>Passives"><i>❖</i>Passives</button>
-      <button data-tab="find" data-i18n-html="<i>⌕</i>Find upgrades"><i>⌕</i>Find upgrades</button>
-      <button data-tab="build" data-i18n-html="<i>✦</i>Build &amp; stats"><i>✦</i>Build &amp; stats</button>
-      <button data-tab="test" data-i18n-html="<i>✎</i>Check an item"><i>✎</i>Check an item</button>
+      <button data-tab="test" data-i18n-html="<i>✎</i>换装测试"><i>✎</i>换装测试</button>
       <button data-tab="options" data-i18n-html="<i>⚙</i>Settings"><i>⚙</i>Settings</button>
     </nav>
     <div class="side-foot" id="hotkeyLine" data-i18n-html="Hover an item in game and press <b>F2</b>.">Hover an item in game and press <b>F2</b>.</div>
@@ -28,7 +26,7 @@
     <div class="res-loss-banner hidden" id="loadError" role="alert"></div>
     <section class="tab active" id="tab-gear">
       <header class="page-head">
-        <div><h2 data-i18n="My gear">My gear</h2><div class="sub" data-i18n-html="What you're wearing, scored for your build (<button class=&quot;link gs-help&quot;>what's the gear score?</button>). Click a slot's <b>Find upgrades</b> to search for something better.">What you're wearing, scored for your build (<button class="link gs-help">what's the gear score?</button>). Click a slot's <b>Find upgrades</b> to search for something better.</div></div>
+        <div><h2 data-i18n="My gear">My gear</h2><div class="sub">你目前穿戴的装备，依你的 BD 评分（<button class="link gs-help">什么是装备评分？</button>）。</div></div>
         <div class="page-actions">
           <button id="profileNew" data-i18n="New character">New character</button>
           <button id="profileRename" data-i18n="Rename">Rename</button>
@@ -55,11 +53,11 @@
           <div class="note" id="pobMsg"></div>
           <div id="pobStatus" class="pob-status"></div>
           <div class="row" id="pobControls">
-            <label><input type="checkbox" id="pobUse"> <span data-i18n="Judge items with Path of Building">Judge items with Path of Building</span></label>
+            <label class="hidden"><input type="checkbox" id="pobUse"> <span data-i18n="Judge items with Path of Building">Judge items with Path of Building</span></label>
             <label data-i18n-html="Damage <input type=&quot;range&quot; id=&quot;pobBalance&quot; min=&quot;0&quot; max=&quot;100&quot; step=&quot;10&quot;> Survivability">Damage <input type="range" id="pobBalance" min="0" max="100" step="10"> Survivability</label>
           </div>
           </div>
-          <div class="card-p">
+          <div class="card-p hidden">
             <h3 data-i18n="Priorities">Priorities</h3>
           <div class="row prio">
             <label data-i18n-html="<input type=&quot;checkbox&quot; id=&quot;prRes&quot;> Cap my resistances first" title="While a resistance is under the cap, items that fill it score much higher and Find upgrades looks for it first"><input type="checkbox" id="prRes"> Cap my resistances first</label>
@@ -70,7 +68,7 @@
           </div>
           <div class="dim small" id="prNote"></div>
           </div>
-          <div class="card-p">
+          <div class="card-p hidden">
             <h3 data-i18n="Your resistances">Your resistances</h3>
           <div class="help" data-i18n-html="The <b>uncapped</b> numbers from your in-game character sheet (hover each one), with the gear you wear now. They follow your gear changes from then on.">The <b>uncapped</b> numbers from your in-game character sheet (hover each one), with the gear you wear now. They follow your gear changes from then on.</div>
           <div class="row resrow">
@@ -258,12 +256,12 @@
 
     <section class="tab" id="tab-test">
       <header class="page-head">
-        <div><h2 data-i18n="Check an item">Check an item</h2><div class="sub" data-i18n="Paste item text (from the game, or someone's listing copied in game) to check it without the popup.">Paste item text (from the game, or someone's listing copied in game) to check it without the popup.</div></div>
+        <div><h2>换装测试</h2><div class="sub">粘贴装备文本（游戏内 Ctrl+C 复制，或从交易页复制），自动识别部位，与当前装备对比，查看各项属性的提升与下降；不会自动替换，需要时点「替换这件装备」。</div></div>
       </header>
       <div class="grid g-2 g-even">
         <div class="col"><div class="card-p">
           <textarea id="testText" rows="14" data-i18n-placeholder="Item Class: Helmets&#10;Rarity: Rare&#10;..." placeholder="Item Class: Helmets&#10;Rarity: Rare&#10;..."></textarea>
-          <div class="row"><button id="testBtn" class="primary" data-i18n="Check item">Check item</button></div>
+          <div class="row"><button id="testBtn" class="primary">开始测试</button></div>
         </div></div>
         <div class="col"><div id="testResult"></div></div>
       </div>

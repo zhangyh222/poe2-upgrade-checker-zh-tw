@@ -22,6 +22,8 @@ document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('cli
 let accountAt = 0; // when the sign-in status was last checked
 async function load() {
   state = await window.api.getState();
+  // PoB is always on now (its toggle was removed); turn it back on if a profile had it off
+  if (state.settings.usePob === false && !window.__pobForcedOn) { window.__pobForcedOn = true; window.api.pobEnable(true); }
   renderSlots();
   renderWeights();
   $('#weightsJson').value = JSON.stringify(state.weights, null, 2);
@@ -115,9 +117,7 @@ function renderSlots() {
     return `<tr class="slotrow"><td>${esc(t(s))}</td><td>${gcell}</td>
       <td>${it ? `<b>${esc(gn(it.name))}</b> <span class="dim">${esc(it.baseType !== it.name ? gn(it.baseType) : '')}</span><div class="dim">${itemModsOrText(it)}</div>`
         : t('<span class="empty">not set</span>')}</td>
-      <td class="nowrap">${it ? `<button data-quick="${esc(s)}">${t('Find upgrades')}</button>
-        <button data-custom="${esc(s)}">${t('Custom…')}</button>
-        <button data-clear="${esc(s)}">${t('Clear')}</button>` : ''}${it && it.fromPob ? `<div class="dim small">${t('from PoB')}</div>` : ''}</td></tr>`;
+      <td class="nowrap">${it ? `<button data-clear="${esc(s)}">${t('Clear')}</button>` : ''}${it && it.fromPob ? `<div class="dim small">${t('from PoB')}</div>` : ''}</td></tr>`;
   };
   $('#slots').innerHTML = `<tr><th>${t('Slot')}</th><th>${t('Gear score')}</th><th>${t('Item')}</th><th></th></tr>` + main.map(row).join('')
     + `<tr><td colspan="4"><button class="link" id="extraToggle">${extraOpen ? '▾' : '▸'} ${t('Weapon swap, flasks, charms & jewels ({0} saved)', showExtras.length)}</button></td></tr>`
@@ -151,6 +151,8 @@ const toTarget = (v) => (v && v.startsWith('item:') ? { itemId: v.slice(5) } : v
 const fromTarget = (t) => (t && typeof t === 'object' && t.itemId ? 'item:' + t.itemId : t);
 
 function showTab(name) {
+  // a page whose nav button was removed (Find upgrades / Build & stats) must never be revealed
+  if (!document.querySelector('.tabs button[data-tab="' + name + '"]')) return;
   // switch tabs without firing the tab button's click handler
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x.dataset.tab === name));
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + name));
@@ -302,7 +304,7 @@ $('#findSimilar').addEventListener('click', () => runFind(() => window.api.quick
 $('#findQuick').addEventListener('click', () => runFind(() => window.api.quickFind(toTarget($('#findSlot').value), 'weights', searchExtra())));
 $('#findStatus').addEventListener('change', () => window.api.setSetting('status', $('#findStatus').value));
 $('#findLeague').addEventListener('change', () => window.api.setSetting('league', $('#findLeague').value));
-document.querySelector('.tabs button[data-tab="find"]').addEventListener('click', () => openFind(null));
+const findNav = document.querySelector('.tabs button[data-tab="find"]'); if (findNav) findNav.addEventListener('click', () => openFind(null));
 window.api.onFindUpgrade((target) => { load().then(() => openFind(target)); });
 
 // A new item was copied: keep the Find tab in step with it.
@@ -362,6 +364,32 @@ $('#testBtn').addEventListener('click', async () => {
   if (state && state.pobOn) $('#testResult').innerHTML = '<div class="card"><div class="note"><span class="spinner"></span> ' + t('Checking with Path of Building…') + '</div></div>';
   const r = await window.api.evaluateText(text);
   window.renderComparison($('#testResult'), r, { itemText: text, onChange: () => { load(); $('#testBtn').click(); } });
+  // 交易相关按钮已随「寻找升级」页移除：从换装测试结果里去掉这些死按钮
+  const out = $('#testResult');
+  if (out) {
+    out.querySelectorAll('.main-actions').forEach((e) => e.remove());
+    out.querySelectorAll('#likeFind2, #sameFind, #weightFind, #craftFind, #customFind').forEach((e) => e.remove());
+  }
+  // 换装测试：只做对比；点「替换这件装备」才把文本写入对应槽位，不点就不改已存装备
+  if (r && r.ok && r.targetSlot && !r.isEquipped && text.trim()) {
+    const bar = document.createElement('div');
+    bar.className = 'row';
+    const btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = '替换这件装备';
+    const msg = document.createElement('span');
+    msg.className = 'note';
+    bar.appendChild(btn); bar.appendChild(msg);
+    $('#testResult').appendChild(bar);
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const ok = await window.api.equip(r.targetSlot, text);
+        if (ok) { msg.textContent = '已替换到「' + (r.targetSlot || '') + '」部位。'; await load(); $('#testBtn').click(); }
+        else msg.textContent = '替换失败：无法识别该物品或部位。';
+      } finally { btn.disabled = false; }
+    });
+  }
 });
 
 $('#autoHide').addEventListener('change', () => window.api.setSetting('autoHideSeconds', Math.max(2, Number($('#autoHide').value) || 12)));
@@ -481,7 +509,7 @@ $('#autoRate').addEventListener('change', async () => {
   showRate(false);
 });
 $('#rateRefresh').addEventListener('click', () => showRate(true));
-document.querySelector('.tabs button[data-tab="find"]').addEventListener('click', () => showRate(false));
+const findNavRate = document.querySelector('.tabs button[data-tab="find"]'); if (findNavRate) findNavRate.addEventListener('click', () => showRate(false));
 window.api.onFindUpgrade(() => showRate(false));
 
 // ---------- ignored stats ----------
@@ -1008,7 +1036,7 @@ renderUpdate();
 // ---------- gear score explanation ----------
 $('#gsExplain').innerHTML = window.gearExplainHtml({ where: t('gear score editor on this page') });
 window.showGearHelp = () => {
-  document.querySelector('.tabs button[data-tab="build"]').click();
+  const buildNav = document.querySelector('.tabs button[data-tab="build"]'); if (buildNav) buildNav.click();
   setTimeout(() => $('#gsExplainCard').scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
 };
 document.querySelectorAll('.page-head .gs-help').forEach((b) => b.addEventListener('click', () => window.showGearHelp()));
