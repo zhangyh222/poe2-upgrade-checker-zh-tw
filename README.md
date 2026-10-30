@@ -26,14 +26,14 @@
 - 「我的裝備」页按槽位展示全身装备（含武器切换、珠宝、药剂、护符），导入 PoB 后自动填槽。
 - 「角色」页按 Path of Building 的计算展示：伤害 / 召唤物伤害、有效生命、能量护盾、抗性（对比上限）、最大承伤、精魂、属性、升华与关键天赋、装备评分等。
 
-<p align="center"><img src="docs/popup.png" alt="F2 悬浮窗：装备对比判定" width="380"> <img src="docs/my-gear.png" alt="我的裝備：全身装备与 PoB build" width="380"></p>
+<p align="center"><img src="docs/my-gear.png" alt="我的装备：按槽位展示全身装备，并给出整体装备评分与优先升级" width="820"></p>
 
 ### 3. 技能与天赋查看
 
 - **天賦页**：用 PoB 的天赋树数据在画布上绘出整棵 PoE2 天赋树，高亮你已点的路径；可缩放、拖拽、悬停查看节点属性、搜索节点。
 - **角色页**：展示技能及其辅助（主技能优先）、升华、关键天赋，以及属性来源明细（悬停 / 点击可查看某条角色属性的来源）。
 
-<p align="center"><img src="docs/character.png" alt="角色页：PoB 计算出的角色面板"></p>
+<p align="center"><img src="docs/character.png" alt="角色页：按 Path of Building 计算的角色面板，含技能与辅助" width="820"><br><br><img src="docs/passives.png" alt="天赋页：整棵 PoE2 天赋树，高亮已点路径；顶部标签可按类别高亮 / 聚焦" width="820"></p>
 
 ## 其他功能（简略）
 

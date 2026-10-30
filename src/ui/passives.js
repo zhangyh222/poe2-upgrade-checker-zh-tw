@@ -39,6 +39,7 @@
   let view = { s: 0.02, x: 0, y: 0 }; // world -> screen: x*s + view.x
   let hover = null;
   let matches = new Set();
+  let filter = null; // a legend chip picked: highlight/zoom just those nodes
   let dragging = null;
 
   const canvas = $('#passCanvas');
@@ -92,6 +93,20 @@
   // shared points are yellow; points that only work with weapon set 1 / 2 are red / green
   function setOf(n) { return n.flags & 32 ? 1 : n.flags & 64 ? 2 : 0; }
   function allocColor(n) { const set = setOf(n); return set === 1 ? COLORS.set1 : set === 2 ? COLORS.set2 : COLORS.on; }
+
+  // which nodes a picked legend chip keeps in focus (the rest are dimmed)
+  function filterMatch(n) {
+    switch (filter) {
+      case 'on': return !!(n.flags & 8);
+      case 'set1': return setOf(n) === 1;
+      case 'set2': return setOf(n) === 2;
+      case 'keystone': return !!(n.flags & 2);
+      case 'notable': return !!(n.flags & 1);
+      case 'ascendancy': return !!(n.flags & 4);
+      case 'normal': return !(n.flags & (2 | 1 | 4 | 16));
+      default: return true;
+    }
+  }
 
   function colorOf(n) {
     if (n.flags & 8) return allocColor(n);
@@ -148,11 +163,13 @@
       }
       ctx.strokeStyle = edge;
       ctx.lineWidth = on ? Math.max(2, Math.min(3.4, view.s * 26)) : 1.2;
+      ctx.globalAlpha = filter && !(filterMatch(a) && filterMatch(c)) ? 0.1 : 1;
       ctx.beginPath();
       ctx.moveTo(a.x * view.s + view.x, a.y * view.s + view.y);
       ctx.lineTo(c.x * view.s + view.x, c.y * view.s + view.y);
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
 
     // nodes
     // node size follows the space between nodes, so the tree stays readable at any zoom
@@ -165,6 +182,8 @@
       const x = n.x * view.s + view.x;
       const y = n.y * view.s + view.y;
       const r = radiusPx(n) + ((n.flags & 8) && view.s < 0.05 ? 0.6 : 0);
+      const keep = !filter || filterMatch(n);
+      ctx.globalAlpha = keep ? 1 : 0.14; // unfocused nodes fade back when a legend chip is picked
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = colorOf(n);
@@ -183,13 +202,15 @@
         ctx.strokeStyle = COLORS.jewel;
         ctx.stroke();
       }
-      if (hover === n || matches.has(n.id)) {
+      if (hover === n || matches.has(n.id) || (filter && keep)) {
+        ctx.globalAlpha = 1;
         ctx.beginPath();
         ctx.arc(x, y, r + 3, 0, Math.PI * 2);
         ctx.lineWidth = 1.4;
-        ctx.strokeStyle = hover === n ? '#fff4d6' : '#ffffff';
+        ctx.strokeStyle = hover === n ? '#fff4d6' : (filter ? '#ffe14d' : '#ffffff');
         ctx.stroke();
       }
+      ctx.globalAlpha = 1;
     }
 
     // names of the big nodes, once there is room for them
@@ -205,10 +226,12 @@
         const x = n.x * view.s + view.x;
         const y = n.y * view.s + view.y + radiusPx(n) + 3;
         const width = ctx.measureText(label).width;
+        ctx.globalAlpha = !filter || filterMatch(n) ? 1 : 0.15;
         ctx.fillStyle = 'rgba(10,9,7,.75)';
         ctx.fillRect(x - width / 2 - 2, y - 1, width + 4, 13);
         ctx.fillStyle = n.flags & 8 ? '#f4e2b8' : COLORS.label;
         ctx.fillText(label, x, y);
+        ctx.globalAlpha = 1;
       }
     }
     drawLegend();
@@ -224,7 +247,9 @@
       ['ascendancy', t('Ascendancy')],
       ['normal', t('Small passives')],
     ];
-    $('#passLegend').innerHTML = items.map(([k, label]) => `<span class="lg"><i style="background:${COLORS[k]}"></i>${esc(label)}</span>`).join('');
+    // the legend doubles as a filter: pick a kind to highlight/zoom those nodes, pick it again to clear
+    $('#passLegend').innerHTML = items.map(([k, label]) =>
+      `<span class="lg${filter === k ? ' on' : ''}" data-filter="${k}" role="button" tabindex="0"><i style="background:${COLORS[k]}"></i>${esc(label)}</span>`).join('');
   }
 
   function fitAll() {
@@ -241,6 +266,18 @@
     let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
     for (const n of on) { minX = Math.min(minX, n.x); minY = Math.min(minY, n.y); maxX = Math.max(maxX, n.x); maxY = Math.max(maxY, n.y); }
     const pad = 900;
+    const w = canvas.clientWidth || 800; const h = canvas.clientHeight || 520;
+    const s = Math.min(w / (maxX - minX + pad * 2), h / (maxY - minY + pad * 2));
+    view = { s, x: w / 2 - ((minX + maxX) / 2) * s, y: h / 2 - ((minY + maxY) / 2) * s };
+    draw();
+  }
+
+  // zoom to a subset (a picked legend chip) so the matching nodes fill the view
+  function fitTo(list) {
+    if (!list || !list.length) { draw(); return; }
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    for (const n of list) { minX = Math.min(minX, n.x); minY = Math.min(minY, n.y); maxX = Math.max(maxX, n.x); maxY = Math.max(maxY, n.y); }
+    const pad = 700;
     const w = canvas.clientWidth || 800; const h = canvas.clientHeight || 520;
     const s = Math.min(w / (maxX - minX + pad * 2), h / (maxY - minY + pad * 2));
     view = { s, x: w / 2 - ((minX + maxX) / 2) * s, y: h / 2 - ((minY + maxY) / 2) * s };
@@ -392,6 +429,23 @@
     setMatches();
     const first = nodes.find((n) => matches.has(n.id));
     if (first) focusNode(first);
+  });
+
+  // the legend chips filter the tree: pick one to highlight + zoom to those nodes, pick it again to clear
+  $('#passLegend').addEventListener('click', (ev) => {
+    const el = ev.target.closest('[data-filter]');
+    if (!el) return;
+    const k = el.dataset.filter;
+    filter = filter === k ? null : k;
+    drawLegend();
+    if (!filter) { fitAll(); return; }
+    const list = nodes.filter(filterMatch);
+    if (list.length) fitTo(list); else draw();
+  });
+  $('#passLegend').addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    const el = ev.target.closest('[data-filter]');
+    if (el) { ev.preventDefault(); el.click(); }
   });
 
   document.querySelector('.tabs button[data-tab="passives"]').addEventListener('click', () => load(false));

@@ -974,7 +974,19 @@ ipcMain.handle('pob:import', async (_e, input) => {
         engine = pobSummary(info);
         // the gear score (used when PoB can't judge something) gets a profile that fits this build
         if (!store.settings.buildPicked && engine) {
-          const fit = engine.dpsKey === 'MinionDPS' ? 'djinn-varashta' : (engine.es || 0) > (engine.life || 0) * 2 ? 'es-caster' : 'life-res';
+          // The "spellcaster" profile weights spell skill levels and spell/elemental damage, so it
+          // only fits real spell builds. Many attack builds are Energy-Shield-heavy too (an ES Monk,
+          // for one): decide by the main skill's own attack tag, not by Energy Shield vs Life alone.
+          let isAttack = false;
+          try {
+            const sheet = await pobEngine().sheet();
+            const mainGroup = sheet && Array.isArray(sheet.skills) ? sheet.skills.find((s) => s.main) : null;
+            isAttack = !!(mainGroup && Array.isArray(mainGroup.gems) && mainGroup.gems.some((g) => g.attack && !g.support));
+          } catch (_) { /* no sheet this time: fall back to the life/ES heuristic below */ }
+          const fit = engine.dpsKey === 'MinionDPS' ? 'djinn-varashta'
+            : isAttack ? 'life-res'
+            : (engine.es || 0) > (engine.life || 0) * 2 ? 'es-caster'
+            : 'life-res';
           if (fit !== store.settings.build) { store.setSetting('build', fit); log(`gear score profile set to ${fit} from the PoB build`); }
         }
         if (engine.mismatch.length) message.push(...engine.mismatch);

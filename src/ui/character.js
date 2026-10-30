@@ -36,7 +36,10 @@
       const [st, d] = await Promise.all([window.api.getState(), window.api.pobSheet(!!refresh)]);
       const prof = (st.profiles || []).find((p) => p.active);
       lastState = st;
-      $('#charTitle').textContent = prof ? prof.name : t('Character');
+      // The page heading stays generic ("Character"); the active character's name is in the sidebar
+      // selector. Putting the profile name here looked like a build-type label (e.g. "法系") on an
+      // attack build, which confused players.
+      $('#charTitle').textContent = t('Character');
       body.innerHTML = d.sheet ? sheetHtml(d, st) : noPobHtml(d, st);
       srcCache.clear();
       closeHover();
