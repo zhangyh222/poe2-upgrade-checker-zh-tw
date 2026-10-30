@@ -493,7 +493,6 @@
         ${r.isEquipped ? '' : r.pob || r.pobPending || r.pobError ? window.pobBlock(r.pob, { pending: r.pobPending, error: r.pobError, compact: !full, noBanner: true }) : window.characterBlock(r.character, { compact: !full, risks: r.risks, noBanner: true })}
         ${notes.filter((n) => !/^Nothing saved/.test(sourceText(n)) || !emptySlot).filter((n) => full || /unidentified|two-handed/i.test(sourceText(n))).map((n) => `<div class="note">${esc(displayText(n))}</div>`).join('')}
         ${emptySlot ? `<div class="actions">${equipButtons(r)}</div>` : ''}
-        <div class="actions main-actions">${primary}</div>
         <div class="note" id="findMsg"></div>
         <button class="link more" id="moreBtn">${full ? t('Less ▴') : t('More ▾')}</button>
         <div class="more-box ${full ? '' : 'hidden'}" id="moreBox">
@@ -504,11 +503,6 @@
           ${window.itemTooltipHtml ? `<div class="mods-block">${window.itemTooltipHtml(it)}</div>` : ''}
           ${r.isEquipped || emptySlot ? '' : `<div class="actions">${equipButtons(r)}</div>`}
           <div class="actions">
-            ${r.replacing.length && !r.isEquipped && !unique ? '<button class="link" id="likeFind2" title="' + t('Listings with the stats of the item you just copied') + '">' + t('Items like this one') + '</button>' : ''}
-            ${r.replacing.length && !unique ? '<button class="link" id="sameFind" title="' + t('Listings with every stat of your equipped item at your value or higher') + '">' + t('Same stats or better') + '</button>' : ''}
-            ${r.replacing.length && !gearMode ? '<button class="link" id="weightFind" title="' + t('Listings that beat your equipped item by your stat weights') + '">' + t('By my weights') + '</button>' : ''}
-            ${!unique && it.slot ? '<button class="link" id="craftFind" title="' + t('Bases with your key stats and an open affix to craft') + '">' + t('Craftable bases') + '</button>' : ''}
-            <button class="link" id="customFind" title="${t('Pick which of this item\'s stats to search for')}">${t('Custom search…')}</button>
             ${opts.closable ? '<button class="link" id="settingsBtn">' + t('Settings') + '</button>' : ''}
           </div>
         </div>
