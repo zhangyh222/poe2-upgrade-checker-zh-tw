@@ -1,0 +1,391 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>PoE2 Upgrade Checker</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="../i18n.js"></script>
+  <script src="gamedata.js"></script>
+</head>
+<body class="app">
+  <aside class="side">
+    <div class="brand"><img src="../../assets/icon.png" alt=""><span>PoE2 Upgrade<br>Checker</span></div>
+    <label class="side-char"><span data-i18n="Character">Character</span><select id="profileSel"></select></label>
+    <nav class="tabs side-nav" aria-label="Navigation pages" data-i18n-aria-label="Navigation pages">
+      <button data-tab="gear" class="active" data-i18n-html="<i>⚔</i>My gear"><i>⚔</i>My gear</button>
+      <button data-tab="char" data-i18n-html="<i>☰</i>Character"><i>☰</i>Character</button>
+      <button data-tab="passives" data-i18n-html="<i>❖</i>Passives"><i>❖</i>Passives</button>
+      <button data-tab="find" data-i18n-html="<i>⌕</i>Find upgrades"><i>⌕</i>Find upgrades</button>
+      <button data-tab="build" data-i18n-html="<i>✦</i>Build &amp; stats"><i>✦</i>Build &amp; stats</button>
+      <button data-tab="test" data-i18n-html="<i>✎</i>Check an item"><i>✎</i>Check an item</button>
+      <button data-tab="options" data-i18n-html="<i>⚙</i>Settings"><i>⚙</i>Settings</button>
+    </nav>
+    <div class="side-foot" id="hotkeyLine" data-i18n-html="Hover an item in game and press <b>F2</b>.">Hover an item in game and press <b>F2</b>.</div>
+  </aside>
+
+  <main class="main">
+    <div class="res-loss-banner hidden" id="loadError" role="alert"></div>
+    <section class="tab active" id="tab-gear">
+      <header class="page-head">
+        <div><h2 data-i18n="My gear">My gear</h2><div class="sub" data-i18n-html="What you're wearing, scored for your build (<button class=&quot;link gs-help&quot;>what's the gear score?</button>). Click a slot's <b>Find upgrades</b> to search for something better.">What you're wearing, scored for your build (<button class="link gs-help">what's the gear score?</button>). Click a slot's <b>Find upgrades</b> to search for something better.</div></div>
+        <div class="page-actions">
+          <button id="profileNew" data-i18n="New character">New character</button>
+          <button id="profileRename" data-i18n="Rename">Rename</button>
+          <button id="profileDelete" data-i18n="Delete">Delete</button>
+          <button id="wizardBtn" data-i18n="Setup guide">Setup guide</button>
+        </div>
+      </header>
+      <div class="grid g-2">
+        <div class="col">
+          <div class="card-p">
+          <div id="setupBox" class="setup"></div>
+          <div id="gearSummary" class="gear-summary"></div>
+          <table class="list" id="slots"></table>
+          </div>
+        </div>
+        <div class="col side-col">
+          <div class="card-p">
+            <h3 data-i18n="Your build in Path of Building">Your build in Path of Building</h3>
+          <div class="help" data-i18n-html="Paste your PoB2 export code (Import/Export Build → Generate) or a <b>pobb.in</b> link. The app then judges every item with <b>Path of Building's own calculations</b>: what it does to your minion DPS, effective HP, resistances and Spirit. Make sure PoB's gear, tree, skills and Configuration match how you really play. Items you copy in game (F2) replace PoB's, so it always uses what you're wearing.">Paste your PoB2 export code (Import/Export Build → Generate) or a <b>pobb.in</b> link. The app then judges every item with <b>Path of Building's own calculations</b>: what it does to your minion DPS, effective HP, resistances and Spirit. Make sure PoB's gear, tree, skills and Configuration match how you really play. Items you copy in game (F2) replace PoB's, so it always uses what you're wearing.</div>
+          <div class="row">
+            <input id="pobInput" class="grow" data-i18n-placeholder="https://pobb.in/abc123  or  eNrtXd…" placeholder="https://pobb.in/abc123  or  eNrtXd…">
+            <button id="pobImport" class="primary" data-i18n="Import">Import</button>
+          </div>
+          <div class="note" id="pobMsg"></div>
+          <div id="pobStatus" class="pob-status"></div>
+          <div class="row" id="pobControls">
+            <label><input type="checkbox" id="pobUse"> <span data-i18n="Judge items with Path of Building">Judge items with Path of Building</span></label>
+            <label data-i18n-html="Damage <input type=&quot;range&quot; id=&quot;pobBalance&quot; min=&quot;0&quot; max=&quot;100&quot; step=&quot;10&quot;> Survivability">Damage <input type="range" id="pobBalance" min="0" max="100" step="10"> Survivability</label>
+          </div>
+          </div>
+          <div class="card-p">
+            <h3 data-i18n="Priorities">Priorities</h3>
+          <div class="row prio">
+            <label data-i18n-html="<input type=&quot;checkbox&quot; id=&quot;prRes&quot;> Cap my resistances first" title="While a resistance is under the cap, items that fill it score much higher and Find upgrades looks for it first"><input type="checkbox" id="prRes"> Cap my resistances first</label>
+            <label data-i18n-html="<input type=&quot;checkbox&quot; id=&quot;prChaos&quot;> including chaos" title="Count chaos resistance as one to cap too"><input type="checkbox" id="prChaos"> including chaos</label>
+            <label data-i18n-html="<input type=&quot;checkbox&quot; id=&quot;prDmg&quot;> Never lose damage <span class=&quot;dim small&quot;>(needs PoB)</span>" title="An item that costs more than 5% of your damage (e.g. it doesn't have your minion damage mods) is LOSES DAMAGE, however much resistance or life it adds"><input type="checkbox" id="prDmg"> Never lose damage <span class="dim small">(needs PoB)</span></label>
+            <label data-i18n-html="<input type=&quot;checkbox&quot; id=&quot;prSpirit&quot;> Never run short of Spirit <span class=&quot;dim small&quot;>(needs PoB)</span>" title="An item that leaves you without enough Spirit for your minions and auras is never an upgrade"><input type="checkbox" id="prSpirit"> Never run short of Spirit <span class="dim small">(needs PoB)</span></label>
+            <label data-i18n-html="<input type=&quot;checkbox&quot; id=&quot;prAttrs&quot;> Keep attribute requirements met <span class=&quot;dim small&quot;>(needs PoB)</span>" title="An item that leaves you without the Strength / Dexterity / Intelligence your gear and gems need is never an upgrade"><input type="checkbox" id="prAttrs"> Keep attribute requirements met <span class="dim small">(needs PoB)</span></label>
+          </div>
+          <div class="dim small" id="prNote"></div>
+          </div>
+          <div class="card-p">
+            <h3 data-i18n="Your resistances">Your resistances</h3>
+          <div class="help" data-i18n-html="The <b>uncapped</b> numbers from your in-game character sheet (hover each one), with the gear you wear now. They follow your gear changes from then on.">The <b>uncapped</b> numbers from your in-game character sheet (hover each one), with the gear you wear now. They follow your gear changes from then on.</div>
+          <div class="row resrow">
+            <label data-i18n="Fire">Fire <input type="number" id="resFire" class="num"></label>
+            <label data-i18n="Cold">Cold <input type="number" id="resCold" class="num"></label>
+            <label data-i18n="Lightning">Lightning <input type="number" id="resLightning" class="num"></label>
+            <label data-i18n="Chaos">Chaos <input type="number" id="resChaos" class="num"></label>
+            <label data-i18n="Cap">Cap <input type="number" id="resCap" class="num" placeholder="75"></label>
+            <label data-i18n-title="How far over the cap a resistance must be before more of it stops counting. PoB numbers can include charms and buffs that aren't always on." title="How far over the cap a resistance must be before more of it stops counting. PoB numbers can include charms and buffs that aren't always on.">Safety buffer <input type="number" id="resBuffer" class="num" placeholder="15"></label>
+          </div>
+          <div class="row">
+            <span class="dim small" id="resSource"></span>
+            <span class="note" id="resMsg"></span>
+          </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-char">
+      <header class="page-head">
+        <div><h2 id="charTitle" data-i18n="Character">Character</h2><div class="sub" id="charSub" data-i18n="Your character as Path of Building calculates it, with the gear you copied in game.">Your character as Path of Building calculates it, with the gear you copied in game.</div></div>
+        <div class="page-actions"><div class="wset-switch hidden" id="charWset"></div><button id="charRefresh" data-i18n="Recalculate">Recalculate</button></div>
+      </header>
+      <div id="charBody"><div class="card-p dim">Loading…</div></div>
+    </section>
+
+    <section class="tab" id="tab-passives">
+      <header class="page-head">
+        <div><h2 data-i18n="Passives">Passives</h2><div class="sub" id="passSub"></div></div>
+        <div class="page-actions">
+          <button id="passCenter" data-i18n="Center on your tree">Center on your tree</button>
+          <button id="passFit" data-i18n="Fit to screen">Fit to screen</button>
+        </div>
+      </header>
+      <div class="card-p pass-card">
+        <div class="pass-tools">
+          <input id="passSearch" class="grow" data-i18n-placeholder="Search passives or stats" placeholder="Search passives or stats">
+          <span class="dim small" data-i18n="Scroll to zoom, drag to move">Scroll to zoom, drag to move</span>
+        </div>
+        <div class="pass-legend" id="passLegend"></div>
+        <div class="pass-wrap" id="passWrap">
+          <canvas id="passCanvas"></canvas>
+          <div class="pass-tip hidden" id="passTip"></div>
+        </div>
+      </div>
+    </section>
+    <section class="tab" id="tab-find">
+      <header class="page-head">
+        <div><h2 data-i18n="Find upgrades">Find upgrades</h2><div class="sub" data-i18n="Pick an item, set what you'll pay, then search. Results open scored against your gear.">Pick an item, set what you'll pay, then search. Results open scored against your gear.</div></div>
+      </header>
+      <div class="card-p filterbar">
+        <div class="fb-row">
+          <label class="fb-item" data-i18n="Item">Item <select id="findSlot"></select></label>
+          <span class="fb-sep"></span>
+          <label class="fb-price" data-i18n="Price from">Price from <input type="number" id="budgetMin" class="num" min="0" step="0.5" data-i18n-placeholder="any" placeholder="any"></label>
+          <label data-i18n="to">to <input type="number" id="budgetMax" class="num" min="0" step="0.5" data-i18n-placeholder="any" placeholder="any"></label>
+          <select id="budgetCurrency" aria-label="Price currency" data-i18n-aria-label="Price currency">
+            <option value="divine" data-i18n="Divine Orbs">Divine Orbs</option>
+            <option value="exalted" data-i18n="Exalted Orbs">Exalted Orbs</option>
+            <option value="chaos" data-i18n="Chaos Orbs">Chaos Orbs</option>
+          </select>
+          <button id="budgetClear" class="link" data-i18n="any price">any price</button>
+          <span class="fb-sep"></span>
+          <label data-i18n="Sellers">Sellers <select id="findStatus">
+            <option value="available" data-i18n="Instant Buyout + In Person">Instant Buyout + In Person</option>
+            <option value="securable" data-i18n="Instant Buyout only">Instant Buyout only</option>
+            <option value="online" data-i18n="In Person (online) only">In Person (online) only</option>
+            <option value="any" data-i18n="Any (incl. offline)">Any (incl. offline)</option>
+          </select></label>
+          <label data-i18n="League">League <select id="findLeague"></select></label>
+          <button id="tradeRefresh" data-i18n-title="Reload leagues and stat list from the trade site" title="Reload leagues and stat list from the trade site">↻</button>
+        </div>
+        <div class="fb-row fb-sub">
+          <span id="rateWrap">
+            <label data-i18n-html="1 Divine = <input type=&quot;number&quot; id=&quot;divineRate&quot; class=&quot;num&quot; min=&quot;0&quot; placeholder=&quot;?&quot;> Exalted" title="1 Divine Orb equals this many Exalted Orbs">1 Divine = <input type="number" id="divineRate" class="num" min="0" placeholder="?"> Exalted</label>
+            <label><input type="checkbox" id="autoRate" checked> <span data-i18n="auto from poe.ninja">auto from poe.ninja</span></label>
+            <button id="rateRefresh" class="link" data-i18n="refresh" data-i18n-title="Get the latest rate now" title="Get the latest rate now">refresh</button>
+          </span>
+          <span class="help" id="budgetHelp"></span>
+          <span class="help" id="rateStatus"></span>
+        </div>
+      </div>
+
+      <div class="grid g-2">
+        <div class="col">
+          <div class="card-p">
+            <div id="findItem" class="finditem"></div>
+            <div class="row"><span id="findNotice" class="note"></span></div>
+            <div class="actions find-actions">
+              <button id="findGear" class="primary" data-i18n="Better for my build" data-i18n-title="Listings that score higher for your build (gear score), even with a different mix of stats. If nothing beats yours, it shows the ones that come close." title="Listings that score higher for your build (gear score), even with a different mix of stats. If nothing beats yours, it shows the ones that come close.">Better for my build</button>
+              <button id="findSimilar" data-i18n="Same stats or better" data-i18n-title="Listings with this item's stats at its values or higher. If nothing is listed it loosens step by step (90%, 80%, 65%) and tells you. Rune bonuses are left out – you can socket your own." title="Listings with this item's stats at its values or higher. If nothing is listed it loosens step by step (90%, 80%, 65%) and tells you. Rune bonuses are left out – you can socket your own.">Same stats or better</button>
+              <button id="findQuick" data-i18n="By my weights" data-i18n-title="Anything that scores higher with your stat weights, even with different stats" title="Anything that scores higher with your stat weights, even with different stats">By my weights</button>
+              <button id="findCraft" data-i18n="Craftable bases" data-i18n-title="Bases with this slot's key stats and an open affix you can craft" title="Bases with this slot's key stats and an open affix you can craft">Craftable bases</button>
+              <button id="findPrice" data-i18n="What's it worth?" data-i18n-title="What items like this sell for" title="What items like this sell for">What's it worth?</button>
+            </div>
+            <div class="row"><span id="findMsg" class="note"></span></div>
+          </div>
+          <div class="card-p">
+            <h3 data-i18n="Custom search">Custom search</h3>
+          <div class="help" data-i18n="Untick stats you don't care about, change the minimums, add stats you want instead, then search.">Untick stats you don't care about, change the minimums, add stats you want instead, then search.</div>
+          <div class="row">
+            <label data-i18n-html="Set minimums to <select id=&quot;minScale&quot;><option value=&quot;1&quot;>100%</option><option value=&quot;0.9&quot;>90%</option><option value=&quot;0.8&quot;>80%</option><option value=&quot;0.7&quot;>70%</option></select> of the item's values">Set minimums to <select id="minScale"><option value="1">100%</option><option value="0.9">90%</option><option value="0.8">80%</option><option value="0.7">70%</option></select> of the item's values</label>
+            <button id="tickAll" data-i18n="Tick all">Tick all</button><button id="tickNone" data-i18n="Untick all">Untick all</button>
+            <label><input type="checkbox" id="findSameBase"> <span data-i18n="Same base type only">Same base type only</span></label>
+          </div>
+          <table class="list" id="findStats"></table>
+          <div class="row">
+            <input id="addTradeStat" list="tradeStats" class="grow" data-i18n-placeholder="Add a stat you want, e.g. #% increased Spell Damage" placeholder="Add a stat you want, e.g. #% increased Spell Damage">
+            <input id="addTradeMin" type="number" class="num" data-i18n-placeholder="min" placeholder="min">
+            <button id="addTradeBtn" data-i18n="Add">Add</button>
+            <button id="addBrowse" data-i18n="Browse stats…">Browse stats…</button>
+            <datalist id="tradeStats"></datalist>
+          </div>
+          <div class="row">
+            <button id="findSearch" class="primary gilded" data-i18n="Search with ticked stats">Search with ticked stats</button>
+            <span id="findMsg2" class="note"></span>
+          </div>
+          </div>
+        </div>
+        <div class="col side-col">
+          <div class="card-p" id="ignoreCard">
+            <h3 data-i18n="Ignored stats">Ignored stats</h3>
+          <div class="help" data-i18n-html="Stats you don't care about. <b>Ignore</b> leaves them out of the gear score and every search. <b>Exclude</b> also hides listings that have them.">Stats you don't care about. <b>Ignore</b> leaves them out of the gear score and every search. <b>Exclude</b> also hides listings that have them.</div>
+          <table class="list" id="ignoreList"></table>
+          <div class="row">
+            <input id="ignoreAdd" list="ignoreStatsList" class="grow" data-i18n-placeholder="Ignore another stat, e.g. # to maximum Mana" placeholder="Ignore another stat, e.g. # to maximum Mana">
+            <button id="ignoreAddBtn" data-i18n="Add">Add</button>
+            <button id="ignoreBrowse" data-i18n="Browse stats…">Browse stats…</button>
+            <datalist id="ignoreStatsList"></datalist>
+          </div>
+          </div>
+          <div class="card-p">
+            <h3 data-i18n="Saved searches &amp; alerts">Saved searches &amp; alerts</h3>
+          <div class="help" data-i18n-html="Save a search from the results window (☆ Save search) and run it again here with one click. Tick <b>Alert</b> to get a Windows notification when something new is listed.">Save a search from the results window (☆ Save search) and run it again here with one click. Tick <b>Alert</b> to get a Windows notification when something new is listed.</div>
+          <div class="row">
+            <label data-i18n="Check alerts every">Check alerts every <select id="alertEvery">
+              <option value="0" data-i18n="never">never</option><option value="5" data-i18n="5 min">5 min</option><option value="10" data-i18n="10 min">10 min</option><option value="20" data-i18n="20 min">20 min</option><option value="30" data-i18n="30 min">30 min</option><option value="60" data-i18n="hour">hour</option>
+            </select></label>
+            <span class="dim" id="alertStatus"></span>
+          </div>
+          <table class="list" id="savedList"></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <section class="tab" id="tab-build">
+      <header class="page-head">
+        <div><h2 data-i18n="Build &amp; stats">Build &amp; stats</h2><div class="sub" data-i18n-html="Which stats matter to your character, for the gear score.<span class=&quot;gs-fallback-note hidden&quot;> With your Path of Building build loaded, verdicts and <b>Better for my build</b> come from Path of Building instead – the gear score is a rough guide and the fallback.</span>">Which stats matter to your character, for the gear score.<span class="gs-fallback-note hidden"> With your Path of Building build loaded, verdicts and <b>Better for my build</b> come from Path of Building instead – the gear score is a rough guide and the fallback.</span></div></div>
+      </header>
+      <div class="grid g-2">
+        <div class="col"><div class="card-p">
+          <h3 data-i18n="Your build">Your build</h3>
+          <div class="row"><label data-i18n="Build">Build <select id="buildSel"></select></label></div>
+          <div class="help" id="buildHelp"></div>
+          <h3 data-i18n="Gear score editor">Gear score editor</h3>
+          <div class="help" data-i18n="How much each stat matters to you. 1× is the build's default, 0× turns it off, 2× doubles it. Changes apply to this character only.">How much each stat matters to you. 1× is the build's default, 0× turns it off, 2× doubles it. Changes apply to this character only.</div>
+          <table class="list" id="buildEditor"></table>
+          <div class="row"><button id="buildTweaksReset" data-i18n="Reset to the build's defaults">Reset to the build's defaults</button><span class="note" id="buildMsg"></span></div>
+        </div></div>
+        <div class="col side-col"><div class="card-p" id="gsExplainCard">
+          <h3 data-i18n="How the gear score works">How the gear score works</h3>
+          <div id="gsExplain"></div>
+        </div><div class="card-p" id="weightsCard">
+          <h3 data-i18n="Stat weights">Stat weights</h3>
+          <div class="help" data-i18n-html="Only used for <b>By my weights</b> searches, and for the verdict when the build is turned off. A weight says how many points one unit of a stat is worth: Life 1 and Fire Res 1.5 means +10% fire res = +15 life.">Only used for <b>By my weights</b> searches, and for the verdict when the build is turned off. A weight says how many points one unit of a stat is worth: Life 1 and Fire Res 1.5 means +10% fire res = +15 life.</div>
+          <div class="toolbar">
+            <input type="search" id="filter" data-i18n-placeholder="Filter stats…" placeholder="Filter stats…">
+            <label><input type="checkbox" id="onlyWeighted"> <span data-i18n="Only weighted">Only weighted</span></label>
+            <button id="addStat" data-i18n="+ Add stat">+ Add stat</button>
+            <button id="weightBrowse" data-i18n="Browse stats…">Browse stats…</button>
+            <button id="resetWeights" data-i18n="Reset to defaults">Reset to defaults</button>
+            <button id="suggestBtn" data-i18n="Suggest from my gear" data-i18n-title="Builds weights from the stats your equipped gear has" title="Builds weights from the stats your equipped gear has">Suggest from my gear</button>
+          </div>
+          <div id="suggestBox" class="suggest hidden"></div>
+          <table class="list" id="weights"></table>
+          <h3 data-i18n="Import / export weights">Import / export weights</h3>
+          <textarea id="weightsJson" rows="6"></textarea>
+          <div class="row"><button id="exportW" data-i18n="Refresh export">Refresh export</button><button id="importW" data-i18n="Import">Import</button><span id="importMsg" class="dim"></span></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-test">
+      <header class="page-head">
+        <div><h2 data-i18n="Check an item">Check an item</h2><div class="sub" data-i18n="Paste item text (from the game, or someone's listing copied in game) to check it without the popup.">Paste item text (from the game, or someone's listing copied in game) to check it without the popup.</div></div>
+      </header>
+      <div class="grid g-2 g-even">
+        <div class="col"><div class="card-p">
+          <textarea id="testText" rows="14" data-i18n-placeholder="Item Class: Helmets&#10;Rarity: Rare&#10;..." placeholder="Item Class: Helmets&#10;Rarity: Rare&#10;..."></textarea>
+          <div class="row"><button id="testBtn" class="primary" data-i18n="Check item">Check item</button></div>
+        </div></div>
+        <div class="col"><div id="testResult"></div></div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-options">
+      <header class="page-head">
+        <div><h2 data-i18n="Settings">Settings</h2><div class="sub" data-i18n="Hotkeys, the popup, startup and updates.">Hotkeys, the popup, startup and updates.</div></div>
+      </header>
+      <div class="grid g-cards">
+      <div class="card-p">
+        <h3 data-i18n="Language">Language</h3>
+        <div class="row">
+          <label data-i18n="Interface language">Interface language <select id="langSel">
+            <option value="en" data-i18n="English">English</option>
+            <option value="zh-TW" data-i18n="Traditional Chinese (international / Taiwan)">繁體中文（國際服 / 台服）</option>
+            <option value="zh-CN" data-i18n="Simplified Chinese">简体中文</option>
+          </select></label>
+        </div>
+        <div class="help" data-i18n="Switching the interface language applies immediately and is saved.">Switching the interface language applies immediately and is saved.</div>
+      </div>
+      <div class="card-p">
+        <h3 data-i18n="Hotkeys">Hotkeys</h3>
+      <div class="row">
+        <label data-i18n="Check item">Check item <input id="hotkey" class="hotkey" readonly data-i18n-placeholder="click, then press keys" placeholder="click, then press keys"></label>
+        <button id="hotkeySave" data-i18n="Save">Save</button>
+        <span id="hotkeyMsg" class="note"></span>
+      </div>
+      <div class="row">
+        <label data-i18n="Show / hide results window">Show / hide results window <input id="resultsHotkey" class="hotkey" readonly data-i18n-placeholder="click, then press keys" placeholder="click, then press keys"></label>
+        <button id="resultsHotkeySave" data-i18n="Save">Save</button>
+        <span id="resultsHotkeyMsg" class="note"></span>
+      </div>
+      <div class="help" data-i18n="Hover an item in game and press the check-item hotkey. The app presses Ctrl+C for you (one keystroke per press). Pick a key the game doesn't use: an F-key like F2 works best. Letters such as D also reach the game (with WASD movement, D walks your character).">Hover an item in game and press the check-item hotkey. The app presses Ctrl+C for you (one keystroke per press). Pick a key the game doesn't use: an F-key like F2 works best. Letters such as D also reach the game (with WASD movement, D walks your character).</div>
+      <div class="row"><label><input type="checkbox" id="advancedCopy"> <span data-i18n="Use advanced copy (Ctrl+Alt+C) – needed to spot open prefixes/suffixes for crafting">Use advanced copy (Ctrl+Alt+C) – needed to spot open prefixes/suffixes for crafting</span></label></div>
+      <div class="row"><label><input type="checkbox" id="watchClipboard"> <span data-i18n="Also show the popup when I press Ctrl+C myself (gear only)">Also show the popup when I press Ctrl+C myself (gear only)</span></label></div>
+      </div>
+      <div class="card-p">
+        <h3 data-i18n="Popup">Popup</h3>
+      <div class="row">
+        <label data-i18n="Position">Position <select id="popupPosition">
+          <option value="cursor" data-i18n="Next to the mouse">Next to the mouse</option>
+          <option value="left" data-i18n="Left side of the screen">Left side of the screen</option>
+          <option value="right" data-i18n="Right side of the screen">Right side of the screen</option>
+          <option value="top" data-i18n="Top of the screen">Top of the screen</option>
+        </select></label>
+        <label data-i18n="Size">Size <select id="uiScale">
+          <option value="0.9" data-i18n="Small">Small</option><option value="1" data-i18n="Normal">Normal</option><option value="1.15" data-i18n="Large">Large</option><option value="1.3" data-i18n="Extra large">Extra large</option>
+        </select></label>
+        <label data-i18n="Detail">Detail <select id="popupDetail">
+          <option value="compact" data-i18n="Compact (More ▾ for the rest)">Compact (More ▾ for the rest)</option>
+          <option value="full" data-i18n="Always show everything">Always show everything</option>
+        </select></label>
+      </div>
+      <div class="row"><label><input type="checkbox" id="colorblind"> <span data-i18n="Colour-blind friendly colours (blue = better, orange = worse)">Colour-blind friendly colours (blue = better, orange = worse)</span></label></div>
+      <div class="row"><label data-i18n-html="Hide popup after <input type=&quot;number&quot; id=&quot;autoHide&quot; min=&quot;2&quot; max=&quot;120&quot; class=&quot;num&quot;> seconds (it stays open while your mouse is over it)">Hide popup after <input type="number" id="autoHide" min="2" max="120" class="num"> seconds (it stays open while your mouse is over it)</label></div>
+      <div class="row"><label><input type="checkbox" id="paused"> <span data-i18n="Pause (ignore the hotkey and the clipboard)">Pause (ignore the hotkey and the clipboard)</span></label></div>
+      </div>
+      <div class="card-p">
+        <h3 data-i18n="Startup">Startup</h3>
+      <div class="row"><label><input type="checkbox" id="startWithWindows"> <span id="startWithLabel" data-i18n="Start with Windows">Start with Windows</span> (quietly, in the tray)</label></div>
+      <div class="row"><label><input type="checkbox" id="openSettingsOnStart"> <span data-i18n="Open this window when the app starts">Open this window when the app starts</span></label></div>
+      </div>
+      <div class="card-p">
+        <h3 data-i18n="Trade site account (optional)">Trade site account (optional)</h3>
+      <div class="help" data-i18n-html="Sign in to pathofexile.com inside the app for <b>Travel to hideout</b> straight from the results window, and for fuller searches (the trade site allows bigger ones when you're signed in). Your password goes only to pathofexile.com; the app keeps the login cookie on this PC.">Sign in to pathofexile.com inside the app for <b>Travel to hideout</b> straight from the results window, and for fuller searches (the trade site allows bigger ones when you're signed in). Your password goes only to pathofexile.com; the app keeps the login cookie on this PC.</div>
+      <div class="row"><button id="signIn" data-i18n="Sign in…">Sign in…</button><button id="signOut" data-i18n="Sign out">Sign out</button><span class="dim" id="signStatus"></span></div>
+      </div>
+      <div class="card-p">
+        <h3 data-i18n="Updates">Updates</h3>
+      <div class="help" data-i18n="The installed app checks GitHub for a new version when it starts and every few hours, downloads it quietly, and installs it the next time you quit or restart.">The installed app checks GitHub for a new version when it starts and every few hours, downloads it quietly, and installs it the next time you quit or restart.</div>
+      <div class="row"><label><input type="checkbox" id="autoUpdate"> <span data-i18n="Download updates automatically">Download updates automatically</span></label></div>
+      <div class="row"><button id="updCheck" data-i18n="Check for updates">Check for updates</button><button class="primary hidden" id="updAction"></button><span class="dim" id="updStatus"></span></div>
+      </div>
+      <div class="card-p">
+        <h3 data-i18n="Troubleshooting">Troubleshooting</h3>
+      <div class="row">
+        <button id="testPopup" data-i18n="Show a test popup">Show a test popup</button>
+        <button id="openLog" data-i18n="Open log file">Open log file</button>
+      </div>
+      <div class="help" data-i18n-html="If the test popup appears here but not in game, switch PoE2 to <b>Windowed Fullscreen</b> (Options → Graphics). If the hotkey does nothing, open the log. Your data is saved in <span id=&quot;dataDirText&quot;>%APPDATA%\poe2-upgrade-checker</span>.">If the test popup appears here but not in game, switch PoE2 to <b>Windowed Fullscreen</b> (Options → Graphics). If the hotkey does nothing, open the log. Your data is saved in <span id="dataDirText">%APPDATA%\poe2-upgrade-checker</span>.</div>
+      </div>
+      </div>
+    </section>
+  </main>
+  <div id="wizard" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-box wizard-box">
+      <div class="modal-head"><h2 id="wizTitle" data-i18n="Welcome">Welcome</h2><button id="wizClose" class="x" data-i18n-title="Close" title="Close">×</button></div>
+      <div id="wizBody"></div>
+      <div class="row wiz-nav"><button id="wizBack" data-i18n="Back">Back</button><span class="grow"></span><span class="dim" id="wizStep"></span><button id="wizNext" class="primary" data-i18n="Next">Next</button></div>
+    </div>
+  </div>
+  <div id="picker" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2 id="pickerTitle" data-i18n="Stat database">Stat database</h2>
+        <button id="pickerClose" class="x" data-i18n-title="Close" title="Close">×</button>
+      </div>
+      <div class="toolbar">
+        <input type="search" id="pickerSearch" class="grow" data-i18n-placeholder="Search stats, e.g. energy shield, minion, spirit, cast speed…" placeholder="Search stats, e.g. energy shield, minion, spirit, cast speed…">
+        <select id="pickerKind">
+          <option value="" data-i18n="All kinds">All kinds</option>
+          <option value="pseudo" data-i18n="Totals (all sources)">Totals (all sources)</option>
+          <option value="explicit" data-i18n="Explicit">Explicit</option>
+          <option value="implicit" data-i18n="Implicit">Implicit</option>
+          <option value="augment" data-i18n="Rune">Rune</option>
+          <option value="desecrated" data-i18n="Desecrated">Desecrated</option>
+          <option value="fractured" data-i18n="Fractured">Fractured</option>
+          <option value="crafted" data-i18n="Crafted">Crafted</option>
+          <option value="enchant" data-i18n="Enchant">Enchant</option>
+        </select>
+        <select id="pickerSeen"></select>
+      </div>
+      <div class="help" id="pickerInfo"></div>
+      <div id="pickerList" class="picker-list"></div>
+    </div>
+  </div>
+  <script src="render.js"></script>
+  <script src="settings.js"></script>
+  <script src="statpanel.js"></script>
+  <script src="character.js"></script>
+  <script src="passives.js"></script>
+  <script src="picker.js"></script>
+</body>
+</html>
