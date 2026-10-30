@@ -1,6 +1,6 @@
 {
   "name": "poe2-upgrade-checker-zh-tw",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Path of Exile 2 中文版（繁體）悬浮窗：导入 Path of Building 链接即可查看装备、技能与天赋树，并按 PoB 计算判定升级。基于 ets-public/poe2-upgrade-checker 修改。",
   "main": "src/main.js",
   "private": true,
@@ -27,6 +27,7 @@
     ],
     "win": {
       "icon": "assets/icon.png",
+      "signAndEditExecutable": false,
       "target": [
         "nsis",
         "portable"
