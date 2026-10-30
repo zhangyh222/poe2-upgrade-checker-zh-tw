@@ -15,8 +15,8 @@ param(
   [string]$Version = '',
   [switch]$Yes,
   [switch]$NoWait,
-  [string]$Remote = 'https://github.com/ets-public/poe2-upgrade-checker.git',
-  [string]$Repo = 'ets-public/poe2-upgrade-checker',
+  [string]$Remote = 'https://github.com/zhangyh222/poe2-upgrade-checker-zh-tw.git',
+  [string]$Repo = 'zhangyh222/poe2-upgrade-checker-zh-tw',
   [string]$ApiBase = 'https://api.github.com',
   [int]$PollSeconds = 30,
   [int]$TimeoutMinutes = 25
@@ -87,7 +87,7 @@ if (Test-Path 'ci\release.yml') {
   New-Item -ItemType Directory -Force -Path '.github\workflows' | Out-Null
   Copy-Item 'ci\release.yml' '.github\workflows\release.yml' -Force
 }
-$identity = @('-c', 'user.name=ets-public', '-c', 'user.email=ets-public@users.noreply.github.com')
+$identity = @('-c', 'user.name=zhangyh222', '-c', 'user.email=zhangyh222@users.noreply.github.com')
 
 $wip = $false
 Say 'Checking GitHub for changes...'
@@ -180,7 +180,7 @@ Write-Text 'CHANGELOG.md' $log
 Run-Git add -A | Out-Null
 if (@(Run-Git status --porcelain).Count) { Run-Git @identity commit -q -m "Release $ver" | Out-Null }
 Run-Git branch -M main | Out-Null
-Say 'Uploading to GitHub... (if a sign-in window opens, sign in as ets-public)'
+Say 'Uploading to GitHub... (if a sign-in window opens, sign in as zhangyh222)'
 $push = Run-Git -Soft push -u origin main
 if ($script:GitCode -ne 0) {
   # someone changed GitHub in the meantime: merge once more and retry
