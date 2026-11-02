@@ -149,7 +149,7 @@ local function equip(list)
   local done = {}
   for _, e in ipairs(list or {}) do
     local item = makeItem(e.text)
-    local slot = build.itemsTab.slots[pobSlot(e.slot)]
+    local slot = build.itemsTab.slots[e.slot] -- overrides use absolute slots
     if item and slot then
       build.itemsTab:AddItem(item, true)
       slot:SetSelItemId(item.id)
@@ -370,7 +370,7 @@ local function sheet()
 end
 
 local function evalItems(items)
-  local calcFunc, base = build.calcsTab:GetMiscCalculator()
+  local calcFunc, base = build.calcsTab.calcs.getMiscCalculator(build)
   local res = {}
   for i, it in ipairs(items) do
     local ok, r = pcall(function()
@@ -1177,9 +1177,7 @@ local function useWeaponSet(n)
   build.buildFlag = true
   -- "MAIN" is the pass that fills the sheet's numbers (life, resistances, the main skill's damage);
   -- "CALCS" only fills the Calcs tab's own output
-  local env = build.calcsTab.calcs.buildOutput(build, "MAIN")
-  build.calcsTab.mainEnv = env
-  build.calcsTab.mainOutput = env.player.output
+  build.calcsTab:BuildOutput()
   local r = summary()
   r.weaponSets = weaponSetsInfo()
   return r

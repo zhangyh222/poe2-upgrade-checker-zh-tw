@@ -152,7 +152,7 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
       const target = weaponSet || (r.weaponSwap ? 2 : 1);
       if (myGen === gen && target !== (r.weaponSwap ? 2 : 1)) {
         const s = await request({ cmd: 'weaponset', set: target }, 60000).catch(() => null);
-        if (s && s.ok) { r.weaponSwap = target === 2; buildInfo = r; }
+        if (s && s.ok) { r = { ...r, ...s }; buildInfo = r; }
       }
       return r;
     }).finally(() => { if (loading === p) loading = null; });
@@ -183,7 +183,10 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
   let weaponSet = 0;
   function setWeaponSet(n) {
     weaponSet = n === 2 ? 2 : 1;
-    return request({ cmd: 'weaponset', set: weaponSet }, 60000);
+    return request({ cmd: 'weaponset', set: weaponSet }, 60000).then((r) => {
+      if (r.ok && buildInfo) buildInfo = { ...buildInfo, ...r };
+      return r;
+    });
   }
 
   return {

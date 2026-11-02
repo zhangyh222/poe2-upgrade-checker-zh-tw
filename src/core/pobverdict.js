@@ -57,10 +57,10 @@ function judge(before, after, opts = {}) {
   const key = dpsOf(before, kb) > 0 ? kb : dpsKey(after);
   const dpsA = dpsOf(before, key); const dpsB = dpsOf(after, key);
   // from no damage to some (e.g. your weapon couldn't use the skill): count it as a big gain
-  let dpsPct = pct(dpsA, dpsB);
-  if (!(dpsA > 0) && dpsB > 0) dpsPct = 25;
+  const dpsPct = pct(dpsA, dpsB);
+  const damageScorePct = !(dpsA > 0) && dpsB > 0 ? 25 : dpsPct;
   const ehpPct = pct(n(before.TotalEHP), n(after.TotalEHP));
-  let score = (dpsPct || 0) * wDmg + (ehpPct || 0) * (1 - wDmg);
+  let score = (damageScorePct || 0) * wDmg + (ehpPct || 0) * (1 - wDmg);
   let resGain = 0; // resistance points toward the cap (negative: lost below it)
 
   const breaks = [];
