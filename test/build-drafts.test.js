@@ -114,6 +114,17 @@ test('a bare sheet from the engine is accepted as well', () => fixture(async (di
   assert.equal(trial.evidence.delta.dpsPct, -20);
 }));
 
+test('the fingerprint covers the gear overrides, not only the XML', () => fixture(async (dir, repo) => {
+  await repo.putCurrent('main', doc, 0);
+  const drafts = createBuildDrafts({ repository: repo, engine: engine([busy(), busy()]) });
+  const d = await drafts.start('main');
+  // same XML, different equipped gear: the two calculations must not look identical
+  await repo.updateDraft(d.id, 1, { ...doc, overrides: [{ slot: 'Gloves', text: 'Item Class: Gloves\nRarity: Rare\nX\nVaal Gloves' }] });
+  const result = await drafts.trial(d.id);
+  const [baseHash, draftHash] = String(result.evidence.engineFingerprint).split('|').slice(1);
+  assert.notEqual(baseHash, draftHash, 'overrides are part of what was calculated');
+}));
+
 test('the adopted document is what the engine should load next', () => fixture(async (dir, repo) => {
   await repo.putCurrent('main', doc, 0);
   const drafts = createBuildDrafts({ repository: repo, engine: engine([busy(), busy()]) });

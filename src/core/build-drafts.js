@@ -53,9 +53,14 @@ function createBuildDrafts({ repository, engine }) {
   if (!repository) throw failure('REPOSITORY_REQUIRED', 'A build repository is required.');
   if (!engine || typeof engine.trialDocuments !== 'function') throw failure('ENGINE_REQUIRED', 'An engine that can try build documents is required.');
 
+  // what was actually calculated: the XML alone misses drafts that only change the
+  // gear overrides or the weapon set, which is exactly what the gear panel produces
+  function documentHash(document) {
+    return sha(`${document.xml}\n${JSON.stringify(document.overrides || [])}\n${document.weaponSet || 0}`);
+  }
   function fingerprint(baseDocument, draftDocument) {
     const version = typeof engine.version === 'function' ? engine.version() : null;
-    return `pob:${version || 'unknown'}|${sha(baseDocument.xml)}|${sha(draftDocument.xml)}`;
+    return `pob:${version || 'unknown'}|${documentHash(baseDocument)}|${documentHash(draftDocument)}`;
   }
 
   // Both documents in one engine run: the base first, so a draft that cannot be

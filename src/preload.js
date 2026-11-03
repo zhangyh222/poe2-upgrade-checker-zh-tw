@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld('api', {
   // affix groups to require that the worn item does not have
   tiersGroups: (query) => ipcRenderer.invoke('tiers:groups', query),
   gearQueryVerify: (payload) => ipcRenderer.invoke('gearquery:verify', payload),
+  // adopting a candidate goes through a draft + a new build version, not a bare equip
+  gearQueryAdopt: (payload) => ipcRenderer.invoke('gearquery:adopt', payload),
   // "must still be true after the swap" conditions: global, slot (weapon slots
   // also carry a weapon set) and the temporary layer the caller passes in
   guardsGet: (slotName) => ipcRenderer.invoke('guards:get', slotName),

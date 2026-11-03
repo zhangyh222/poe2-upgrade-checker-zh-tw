@@ -303,10 +303,17 @@
       ev.stopPropagation();
       const c = candidates.find((x) => x.id === adoptBtn.dataset.adopt);
       if (!c) return;
-      // wearing it changes the build, so the next search starts from the new item
-      const ok = await window.api.equip(slot, c.text).catch(() => false);
-      workMsg = ok ? t('Equipped. The next search starts from it.') : t('That item could not be equipped.');
-      if (ok) { verified = null; candidates = []; }
+      // through a draft: the build gets a new version and the old one stays in
+      // history, so this is reversible instead of a silent gear swap
+      working = true; workMsg = t('Adopting through a draft…'); render();
+      const r = await window.api.gearQueryAdopt({ slot, text: c.text }).catch((err) => ({ ok: false, error: err.message }));
+      working = false;
+      if (r && r.ok) {
+        workMsg = t('Adopted as build version {0}. The next search starts from it.', r.revision);
+        verified = []; candidates = [];
+      } else {
+        workMsg = displayError((r && r.error) || 'adopt failed');
+      }
       await refresh();
       return;
     }

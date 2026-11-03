@@ -1647,6 +1647,39 @@ ipcMain.handle('gearquery:more', async (_e, payload) => {
   }
 });
 
+// Adopting a candidate goes through a draft, not straight into the character: the
+// build gets a new version, Path of Building has to agree, and the version it
+// replaced stays in history. Equipping directly would change the build with no
+// record of what it was before.
+ipcMain.handle('gearquery:adopt', async (_e, payload) => {
+  try {
+    const { slot, text } = payload || {};
+    if (!slot || !text) return { ok: false, error: { key: 'That candidate has no item text.', args: [] } };
+    const pobSlot = pobVerdict.SLOT_TO_POB[slot] || slot;
+    const base = await syncBuildDocument();
+    if (!base) return { ok: false, code: 'BUILD_NOT_FOUND', error: { key: DRAFT_ERRORS.BUILD_NOT_FOUND, args: [] } };
+    const characterId = store.data.activeProfile || 'main';
+
+    let draftId = activeDraftId();
+    let draft = draftId ? await buildRepo().getDraft(draftId) : null;
+    if (!draft || draft.status !== 'editing') {
+      draft = await draftService().start(characterId);
+      setActiveDraftId(draft.id);
+    }
+    // the candidate replaces whatever sits in that slot in the draft's overrides
+    const overrides = (draft.document.overrides || []).filter((o) => o.slot !== pobSlot).concat([{ slot: pobSlot, text }]);
+    const updated = await buildRepo().updateDraft(draft.id, draft.revision, { ...draft.document, overrides });
+    const adopted = await draftService().adopt(updated.id, updated.revision, base.revision);
+
+    const item = parseItem(text);
+    if (item) { item.fromPob = false; store.setEquipped(slot, item); store.noteStats(item); }
+    applyBuildDocument(adopted.document);
+    setActiveDraftId(null);
+    log(`gear query: adopted a candidate for ${slot} as revision ${adopted.revision}`);
+    return { ok: true, revision: adopted.revision, weaponSet: adopted.document.weaponSet, validation: adopted.validation || null };
+  } catch (err) { return draftReply(err); }
+});
+
 // Every candidate through Path of Building, then through the three condition layers.
 ipcMain.handle('gearquery:verify', async (_e, payload) => {
   try {
