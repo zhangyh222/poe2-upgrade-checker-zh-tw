@@ -50,6 +50,16 @@
       ]);
       const prof = (st.profiles || []).find((p) => p.active);
       lastState = st;
+      // one-time: older builds kept the per-skill weapon set in this app's settings;
+      // now that the build itself carries set1/set2, move those marks across once
+      const activeId = (prof && prof.id) || 'main';
+      const marks = st.settings && st.settings.skillWeaponSets;
+      if (!window.__skillSetsMigrated && marks && Object.keys(marks).some((k) => k.startsWith(`${activeId}|`))) {
+        window.__skillSetsMigrated = true;
+        window.api.migrateSkillSets().then((r) => {
+          if (r && r.ok && r.changed) { lastState = null; render(true); }
+        }).catch(() => {});
+      }
       lastDrafts = drafts && drafts.ok ? drafts : null;
       lastPlans = planState && planState.ok ? planState : null;
       lastTiers = tiers && tiers.ok ? tiers.tiers : null;

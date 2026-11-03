@@ -1507,6 +1507,51 @@ ipcMain.handle('tiers:equipped', async () => {
   }
 });
 
+// ---------- one-time migration of the old per-skill weapon-set marks ----------
+// Older builds stored "this skill belongs to set 1/2/both" in this app's settings.
+// Newer Path of Building stores it in the build itself, so those marks are moved
+// into the XML once and then forgotten; anything that cannot be matched is kept
+// and reported instead of being guessed onto a different skill.
+const { planMigration } = require('./core/skill-set-migration');
+const pendingSkillSetMarks = (profileId) => Object.keys(store.settings.skillWeaponSets || {}).some((k) => k.startsWith(`${profileId}|`));
+async function migrateSkillSets({ dryRun = false } = {}) {
+  const profileId = store.data.activeProfile || 'main';
+  const marks = store.settings.skillWeaponSets || {};
+  if (!pendingSkillSetMarks(profileId)) return { ok: true, pending: 0, changed: 0 };
+  const pending = Object.keys(marks).filter((k) => k.startsWith(`${profileId}|`)).length;
+  await pobEngine().ensureLoaded();
+  const sheet = await pobEngine().sheet();
+  const plan = planMigration(marks, profileId, sheet.skills || []);
+  const handled = new Set([...(plan.edits || []).map((e) => e.key), ...(plan.resolved || []).map((e) => e.key)]);
+  if (!plan.edits.length) {
+    // weapon-slot skills need no edit, but their old marks are still done with
+    if (plan.resolved.length) {
+      const left = {};
+      for (const [k, v] of Object.entries(marks)) if (!(k.startsWith(`${profileId}|`) && handled.has(k.slice(profileId.length + 1)))) left[k] = v;
+      store.setSetting('skillWeaponSets', left);
+      log(`skill sets: ${plan.resolved.length} mark(s) already decided by the weapon slot`);
+    }
+    return { ok: true, pending, changed: 0, resolved: plan.resolved, leftover: plan.leftover, reason: plan.resolved.length ? 'weapon slot' : 'no matching skill' };
+  }
+  if (dryRun) return { ok: true, pending, changed: 0, edits: plan.edits, resolved: plan.resolved, leftover: plan.leftover };
+  const document = currentDocument();
+  if (!document) return { ok: false, error: { key: 'Import a Path of Building build first.', args: [] } };
+  const out = await pobEngine().editDocument(document, plan.edits.map((e) => ({ op: 'skillSet', id: e.id, set1: e.set1, set2: e.set2 })));
+  fs.mkdirSync(path.dirname(pobFile()), { recursive: true });
+  fs.writeFileSync(pobFile(), out.xml);
+  // the migrated marks become the build's; the ones that matched nothing stay for a report
+  const left = {};
+  for (const [k, v] of Object.entries(marks)) if (plan.leftover[k] !== undefined) left[k] = v;
+  store.setSetting('skillWeaponSets', left);
+  store.setSetting('skillSetsMigrated', { ...(store.settings.skillSetsMigrated || {}), [profileId]: { at: new Date().toISOString(), count: plan.edits.length } });
+  log(`skill sets: moved ${plan.edits.length} manual mark(s) into the build`
+    + `${plan.resolved.length ? `, ${plan.resolved.length} already fixed by a weapon slot` : ''}`
+    + `${Object.keys(plan.leftover).length ? `, kept ${Object.keys(plan.leftover).length} unmatched` : ''}`);
+  pobSync();
+  return { ok: true, pending, changed: plan.edits.length, resolved: plan.resolved, leftover: plan.leftover };
+}
+ipcMain.handle('migrate:skillSets', (_e, opts) => migrateSkillSets({ dryRun: !!(opts && opts.dryRun) }).catch((err) => draftReply(err)));
+
 // ---------- gear query: from conditions to candidates to verified results ----------
 // One line of an item, turned into a trade filter. The trade site's stats use "#"
 // placeholders, so the line is shape-matched the same way the tier index is.

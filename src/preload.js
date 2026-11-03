@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('api', {
   // the gear panel's two steps: find candidates, then check each one with Path of Building
   gearQuerySearch: (payload) => ipcRenderer.invoke('gearquery:search', payload),
   gearQueryMore: (payload) => ipcRenderer.invoke('gearquery:more', payload),
+  // one-time move of the old manual skill weapon-set marks into the build itself
+  migrateSkillSets: (opts) => ipcRenderer.invoke('migrate:skillSets', opts),
   // affix groups to require that the worn item does not have
   tiersGroups: (query) => ipcRenderer.invoke('tiers:groups', query),
   gearQueryVerify: (payload) => ipcRenderer.invoke('gearquery:verify', payload),
