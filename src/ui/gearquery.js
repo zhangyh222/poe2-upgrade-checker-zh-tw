@@ -31,6 +31,9 @@
   let budget = ''; // max price, in the chosen currency
   let currency = 'chaos';
   let sortBy = 'price'; // 'price' | 'verdict'
+  let extras = []; // affixes required that the worn item does not have
+  let findGroups = []; // search results for "add a requirement"
+  let findMsg = '';
 
   const firstNumber = (text) => {
     const m = String(text || '').match(/-?\d+(?:\.\d+)?/);
@@ -48,6 +51,10 @@
       // condition (e.g. cold resistance), not another copy of the same affix
       if (!c || c.action === 'ignore' || c.action === 'replace' || !line.match) continue;
       out.push({ text: line.text, min: c.action === 'keep' ? firstNumber(line.text) : bandOf(line, c.tier) });
+    }
+    for (const x of extras) {
+      const hit = (x.tiers || []).find((y) => y.tier === x.tier);
+      out.push({ text: hit ? hit.text : x.group, min: hit && hit.band ? hit.band.min : null });
     }
     return out;
   };
@@ -123,6 +130,14 @@
       + `<div class="row"><select id="gqSlot">${slotOpts}</select></div>`
       + (item ? `<div class="gq-name">${esc(gn(item.name))}${item.baseType && item.baseType !== item.name ? ` <small class="dim">${esc(gn(item.baseType))}</small>` : ''}</div>` : `<div class="dim">${t('Nothing equipped in this slot.')}</div>`)
       + (lines.length ? lines.map(lineHtml).join('') : '')
+      + `<h4 class="small">${t('Additional requirements')}</h4>`
+      + `<div class="row"><input id="gqFind" class="text grow" placeholder="${esc(t('Find an affix…'))}"/>`
+      + `<button type="button" class="link" data-gq="findaffix">${t('Search')}</button></div>`
+      + (findGroups.length ? `<div class="row gq-find">${findGroups.map((g) => `<span class="lg" data-addgroup="${esc(g.group)}" title="${esc(g.group)}" role="button" tabindex="0">${esc(g.label || g.group)} <small class="dim">${g.tierCount}</small></span>`).join('')}</div>` : (findMsg ? `<div class="dim small">${esc(findMsg)}</div>` : ''))
+      + extras.map((x, i) => `<div class="row gq-extra"><span class="grow" title="${esc(x.group)}">${esc(x.label || x.group)}</span>`
+        + `<label class="dim small">${t('at least')} <b>${t('T{0}', x.tier)}</b></label>`
+        + `<input type="range" min="1" max="${Math.max(1, x.tierCount)}" value="${x.tier}" data-extra-slider="${i}"/>`
+        + `<button type="button" class="link" data-removeextra="${i}">${t('Remove')}</button></div>`).join('')
       + `</div>`;
     const g = guards || { global: [], slot: [] };
     const guardsCard = `<div class="card-p"><h3>${t('Must still be true after the swap')}</h3>`
@@ -240,6 +255,11 @@
     if (el.id === 'gqSort') { sortBy = el.value; render(); return; }
     if (el.id === 'gqBudget') { budget = el.value; return; }
     if (el.id === 'gqCurrency') { currency = el.value; return; }
+    if (el.dataset && el.dataset.extraSlider != null) {
+      const at = Number(el.dataset.extraSlider);
+      if (extras[at]) { extras[at].tier = Number(el.value); render(); }
+      return;
+    }
     if (el.dataset.gqSlider) {
       const text = el.dataset.gqSlider;
       const c = choices.get(text) || { action: 'keep', tier: 1 };
@@ -262,6 +282,22 @@
   });
 
   document.addEventListener('click', async (ev) => {
+    const addGroup = ev.target.closest ? ev.target.closest('[data-addgroup]') : null;
+    if (addGroup) {
+      ev.stopPropagation();
+      const g = findGroups.find((x) => x.group === addGroup.dataset.addgroup);
+      if (g && !extras.some((x) => x.group === g.group)) extras.push({ group: g.group, label: g.label, tier: 1, tierCount: g.tierCount, tiers: g.tiers });
+      findGroups = []; findMsg = '';
+      render();
+      return;
+    }
+    const rmExtra = ev.target.closest ? ev.target.closest('[data-removeextra]') : null;
+    if (rmExtra) {
+      ev.stopPropagation();
+      extras.splice(Number(rmExtra.dataset.removeextra), 1);
+      render();
+      return;
+    }
     const adoptBtn = ev.target.closest ? ev.target.closest('[data-adopt]') : null;
     if (adoptBtn) {
       ev.stopPropagation();
@@ -278,6 +314,15 @@
     if (gq) {
       ev.stopPropagation();
       if (working) return;
+      if (gq.dataset.gq === 'findaffix') {
+        const q = (document.querySelector('#gqFind') || {}).value || '';
+        if (String(q).trim().length < 2) { findMsg = t('Type at least two characters.'); render(); return; }
+        const r = await window.api.tiersGroups(q).catch((err) => ({ ok: false, error: err.message }));
+        if (!r || !r.ok) { findGroups = []; findMsg = displayError((r && r.error) || 'search failed'); }
+        else { findGroups = r.groups || []; findMsg = findGroups.length ? '' : t('No affix matches that.'); }
+        render();
+        return;
+      }
       if (gq.dataset.gq === 'search') {
         const picks = requiredPicks();
         if (!picks.length) { workMsg = t('Pick at least one affix to require.'); render(); return; }

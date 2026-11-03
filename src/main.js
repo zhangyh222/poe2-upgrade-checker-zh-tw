@@ -1431,6 +1431,34 @@ async function ensureTierMatcher() {
   return tierMatcher;
 }
 
+// affix groups matching a phrase, so the panel can require something the worn item
+// does not have (e.g. a helmet with cold resistance when the current one has life)
+ipcMain.handle('tiers:groups', async (_e, query) => {
+  try {
+    await ensureTierMatcher();
+    const q = String(query || '').trim().toLowerCase();
+    if (q.length < 2) return { ok: true, groups: [] };
+    const { band } = require('./core/mod-text');
+    // the group key is internal ("ColdResistance"), the player types "cold
+    // resistance": compare with the spaces removed, and fall back to the mod text
+    const needle = q.replace(/\s+/g, '');
+    const out = [];
+    for (const [name, tiers] of tierGroupsByName) {
+      const hay = name.toLowerCase().replace(/\s+/g, '');
+      const hit = hay.includes(needle) || (tiers || []).some((t) => String(t.text || '').toLowerCase().includes(q));
+      if (!hit) continue;
+      out.push({ group: name, label: (tiers[0] && tiers[0].text) || name, type: (tiers[0] && tiers[0].type) || '', tierCount: tiers.length,
+        tiers: tiers.map((t) => ({ tier: t.tier, text: t.text, level: t.level, band: band(t.text) })) });
+      if (out.length >= 20) break;
+    }
+    out.sort((a, b) => a.group.localeCompare(b.group));
+    return { ok: true, groups: out };
+  } catch (err) {
+    log('tiers groups: ' + (err.message || err));
+    return { ok: false, error: { key: 'Path of Building could not read the modifier pool: {0}', args: [err.message || String(err)] } };
+  }
+});
+
 // everything the gear panel needs for one slot: each line, which affix it is, the
 // tier it rolled, and the whole tier ladder so the slider has real bounds
 ipcMain.handle('tiers:slot', async (_e, slot) => {
@@ -1492,6 +1520,19 @@ const firstNumber = (text) => {
   const m = String(text || '').match(/-?\d+(?:\.\d+)?/);
   return m ? Number(m[0]) : null;
 };
+// the same unique sold by ten people is one candidate, not ten: keep the cheapest
+// (the list is price-sorted) and let the price column stand for the rest
+function dedupeCandidates(list) {
+  const seen = new Set();
+  const out = [];
+  for (const c of list) {
+    const key = `${String(c.name || '').toLowerCase()}|${String(c.baseType || '').toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
 ipcMain.handle('gearquery:search', async (_e, payload) => {
   try {
     const { slot, picks } = payload || {};
@@ -1524,12 +1565,12 @@ ipcMain.handle('gearquery:search', async (_e, payload) => {
     for (const x of raw) {
       const s = listingLib.summarise(x, item.itemClass, rates);
       if (!s || !s.item) continue;
-      candidates.push({ id: x.id, name: s.item.name, text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
+      candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
     }
     log(`gear query: ${candidates.length} candidates for ${slot} (${picks.length} affixes)`);
     // the ids stay on the client so "more" costs no extra search (the trade site
     // allows only a few per minute); each extra page is one fetch call
-    return { ok: true, total: r.total, candidates, unmatched, ids: r.ids.slice(0, 100), league: r.league, searchId: r.searchId };
+    return { ok: true, total: r.total, candidates: dedupeCandidates(candidates), unmatched, ids: r.ids.slice(0, 100), league: r.league, searchId: r.searchId };
   } catch (err) {
     log('gear query: ' + (err.message || err));
     return { ok: false, error: { key: 'The trade search failed: {0}', args: [err.message || String(err)] } };
@@ -1552,9 +1593,9 @@ ipcMain.handle('gearquery:more', async (_e, payload) => {
     for (const x of raw) {
       const s = listingLib.summarise(x, item && item.itemClass, rates);
       if (!s || !s.item) continue;
-      candidates.push({ id: x.id, name: s.item.name, text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
+      candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
     }
-    return { ok: true, candidates, done: start + want >= ids.length };
+    return { ok: true, candidates: dedupeCandidates(candidates), done: start + want >= ids.length };
   } catch (err) {
     log('gear more: ' + (err.message || err));
     return { ok: false, error: { key: 'The trade search failed: {0}', args: [err.message || String(err)] } };

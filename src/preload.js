@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('api', {
   // the gear panel's two steps: find candidates, then check each one with Path of Building
   gearQuerySearch: (payload) => ipcRenderer.invoke('gearquery:search', payload),
   gearQueryMore: (payload) => ipcRenderer.invoke('gearquery:more', payload),
+  // affix groups to require that the worn item does not have
+  tiersGroups: (query) => ipcRenderer.invoke('tiers:groups', query),
   gearQueryVerify: (payload) => ipcRenderer.invoke('gearquery:verify', payload),
   // "must still be true after the swap" conditions: global, slot (weapon slots
   // also carry a weapon set) and the temporary layer the caller passes in
