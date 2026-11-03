@@ -1197,6 +1197,77 @@ local function useWeaponSet(n)
   return r
 end
 
+-- Passive nodes matching a phrase, with how many unallocated points they cost from
+-- what is already allocated. Walking the tree here (0-1 BFS over the connections)
+-- keeps the path honest: a node behind a keystone is not "1 point away".
+local function searchNodes(req)
+  local q = tostring(req.query or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+  if #q < 2 then return { ok = false, error = "search for at least two characters" } end
+  local spec = build.spec
+  local tree = spec and spec.tree
+  if not tree then return { ok = false, error = "Path of Building hasn't loaded a passive tree." } end
+  local limit = math.max(1, math.min(50, tonumber(req.limit) or 20))
+
+  -- cost in unallocated nodes from anything already allocated
+  local cost, cur, nxt, seen = {}, {}, {}, {}
+  for id in pairs(spec.allocNodes or {}) do
+    cost[id] = 0; seen[id] = true; cur[#cur + 1] = id
+  end
+  local spent = 0
+  while #cur > 0 do
+    local nextCur = {}
+    for _, id in ipairs(cur) do
+      local node = tree.nodes[id] or tree.nodes[tostring(id)]
+      for _, c in ipairs((node and node.connections) or {}) do
+        local other = tonumber(c.id)
+        if other and not seen[other] then
+          seen[other] = true
+          if spec.allocNodes[other] then cost[other] = spent; nextCur[#nextCur + 1] = other
+          else cost[other] = spent + 1; nxt[#nxt + 1] = other end
+        end
+      end
+    end
+    if #nextCur > 0 then cur = nextCur
+    else
+      cur = nxt; nxt = {}; spent = spent + 1
+    end
+  end
+
+  local hits = {}
+  for key, node in pairs(tree.nodes or {}) do
+    local id = tonumber(key)
+    local name = node.dn or node.name or ""
+    local text = name:lower()
+    local stats = {}
+    for _, line in ipairs(node.sd or {}) do
+      if type(line) == "string" and line ~= "" then
+        stats[#stats + 1] = line
+        text = text .. " " .. line:lower()
+      end
+    end
+    if id and node.type ~= "ClassStart" and node.type ~= "AscendClassStart" and text:find(q, 1, true) then
+      hits[#hits + 1] = {
+        id = id, name = name, type = node.type,
+        ascendancy = node.ascendancyName or nil,
+        allocated = spec.allocNodes[id] and true or false,
+        -- 0 = both weapon sets, 1 / 2 = set-only
+        weaponSet = tonumber(node.allocMode) or 0,
+        cost = cost[id], -- nil: not connected to what is allocated
+        stats = stats,
+      }
+    end
+  end
+  table.sort(hits, function(a, b)
+    if a.allocated ~= b.allocated then return a.allocated end
+    local ac, bc = a.cost or math.huge, b.cost or math.huge
+    if ac ~= bc then return ac < bc end
+    return tostring(a.name) < tostring(b.name)
+  end)
+  local out = {}
+  for i = 1, math.min(#hits, limit) do out[i] = hits[i] end
+  return { ok = true, query = q, total = #hits, nodes = out }
+end
+
 -- The build as Path of Building itself would export it: the same tables its Save
 -- methods fill, composed by its own XML writer. This is what makes an edit (e.g. a
 -- skill's weapon sets) survive as a build again, instead of living only in memory.
@@ -1291,6 +1362,8 @@ while true do
       return sheet()
     elseif req.cmd == "savexml" then
       return saveXml()
+    elseif req.cmd == "nodes" then
+      return searchNodes(req)
     elseif req.cmd == "setskill" then
       return setSkillWeaponSet(req)
     elseif req.cmd == "quit" then

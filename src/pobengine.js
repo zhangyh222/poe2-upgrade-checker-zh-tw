@@ -364,6 +364,8 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     version: engineVersion, trialDocuments, editDocument,
     loadBuild: (xml, over) => { setBuild(xml, over === undefined ? overrides : over); return transaction((engine) => engine.ensureLoaded()); },
     evalItems: (items) => transaction((engine) => engine.evalItems(items)),
+    // passive nodes matching a phrase, with the points they cost from what is allocated
+    searchNodes: (query, limit) => transaction((engine) => engine.send({ cmd: 'nodes', query: String(query || ''), limit: Number(limit) || 20 }, 120000)),
     makeQuery: (opts) => transaction((engine) => engine.makeQuery(opts)),
     setWeaponSet: (n) => transaction((engine) => engine.setWeaponSet(n)),
     setWeaponSetValue,
