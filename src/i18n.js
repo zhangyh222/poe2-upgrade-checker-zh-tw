@@ -1259,6 +1259,10 @@
     "Restore": "還原",
     "Previous versions": "先前版本",
     "No saved plans yet.": "尚無已儲存的方案。",
+    "Builds": "構築",
+    "Drafts and saved plans of this character's build. Nothing changes until you adopt a draft or apply a plan.": "這個角色構築的草稿與已存方案。採用草稿或套用方案之前，角色不會有任何變動。",
+    "Import a Path of Building build on My gear first.": "請先在「我的裝備」匯入 Path of Building 構築。",
+    "Couldn't load your builds: {0}": "無法載入構築：{0}",
   };
 
   // 简体中文界面文案；键与繁体词典保持一致，游戏复制文本及属性数据库内容不在此转换。
@@ -2679,6 +2683,10 @@
     "Restore": "还原",
     "Previous versions": "先前版本",
     "No saved plans yet.": "尚无已保存的方案。",
+    "Builds": "构筑",
+    "Drafts and saved plans of this character's build. Nothing changes until you adopt a draft or apply a plan.": "这个角色构筑的草稿与已存方案。采用草稿或套用方案之前，角色不会有任何变动。",
+    "Import a Path of Building build on My gear first.": "请先在“我的装备”导入 Path of Building 构筑。",
+    "Couldn't load your builds: {0}": "无法加载构筑：{0}",
   };
 
   const DICTS = { "zh-TW": zh, "zh-CN": zhCN };

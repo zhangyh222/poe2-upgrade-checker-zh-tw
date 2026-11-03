@@ -347,7 +347,7 @@
     // three groups of related cards, each stacked without gaps: what you deal, what you survive,
     // what you wear and how you're built
     const stack = (cls, title, parts) => { const inner = parts.filter(Boolean).join(''); return inner ? `<section class="char-stack ${cls}"><h4 class="char-group">${esc(title)}</h4>${inner}</section>` : ''; };
-    return `${hero}<div class="char-cols">${stack('s-off', t('Offence'), [minionCard, offence, skills])}${stack('s-def', t('Defence'), [defence, res, maxHit, resources])}${stack('s-build', t('Gear & build'), [draftCard(drafts, s.skills), plansCard(lastPlans), gear, misc])}</div>`;
+    return `${hero}<div class="char-cols">${stack('s-off', t('Offence'), [minionCard, offence, skills])}${stack('s-def', t('Defence'), [defence, res, maxHit, resources])}${stack('s-build', t('Gear & build'), [gear, misc])}</div>`;
   }
 
   function noPobHtml(d, st) {
@@ -546,9 +546,37 @@
       draftError = displayError(err && (err.message || err));
     } finally {
       draftBusy = false;
-      render(action === 'adopt' || action === 'trial');
+      if (document.querySelector('#tab-builds.active')) renderBuilds();
+      else render(action === 'adopt' || action === 'trial');
     }
   });
+
+  // ---- the Builds page: drafts and saved plans live there, not on the sheet ----
+  async function renderBuilds() {
+    const body = document.querySelector('#buildBody');
+    if (!body) return;
+    try {
+      const [st, d, drafts, plans] = await Promise.all([
+        window.api.getState(),
+        window.api.pobSheet(false).catch(() => null),
+        window.api.draftState().catch(() => null),
+        window.api.plansList().catch(() => null),
+      ]);
+      lastState = st;
+      lastDrafts = drafts && drafts.ok ? drafts : null;
+      lastPlans = plans && plans.ok ? plans : null;
+      const skills = (d && d.sheet && d.sheet.skills) || [];
+      const html = (lastDrafts ? draftCard(lastDrafts, skills) : '') + (lastPlans ? plansCard(lastPlans) : '');
+      body.innerHTML = html || `<div class="card-p"><div class="dim">${t('Import a Path of Building build on My gear first.')}</div></div>`;
+    } catch (err) {
+      body.innerHTML = `<div class="card-p">${t("Couldn't load your builds: {0}", displayError(err.message || err))}</div>`;
+    }
+  }
+  window.renderBuilds = renderBuilds;
+  const buildsTab = document.querySelector('.tabs button[data-tab="builds"]');
+  if (buildsTab) buildsTab.addEventListener('click', () => setTimeout(renderBuilds, 0));
+  if (window.api.onChanged) window.api.onChanged(() => { if (document.querySelector('#tab-builds.active')) renderBuilds(); });
+  if (document.querySelector('#tab-builds.active')) setTimeout(renderBuilds, 0);
 
   // saved plans and previous versions: both replace the build, so both are a
   // new version and the build they replaced stays restorable
@@ -578,7 +606,7 @@
       planError = displayError(err && (err.message || err));
     } finally {
       planBusy = false;
-      render(true);
+      if (document.querySelector('#tab-builds.active')) renderBuilds(); else render(true);
     }
   });
 
