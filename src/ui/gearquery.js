@@ -30,6 +30,7 @@
   let working = false;
   let budget = ''; // max price, in the chosen currency
   let currency = 'chaos';
+  let sortBy = 'price'; // 'price' | 'verdict'
 
   const firstNumber = (text) => {
     const m = String(text || '').match(/-?\d+(?:\.\d+)?/);
@@ -133,7 +134,21 @@
       + `<div class="dim small">${t('A temporary condition can tighten an inherited one, never loosen it.')}</div>`
       + (message ? `<div class="small ${message.ok ? 'pos' : 'neg'}">${esc(message.text)}</div>` : '')
       + `</div>`;
-    const rows = candidates.slice(0, 20).map((c) => {
+    // price order is what the trade site gave us; "best first" ranks what Path of
+    // Building and the conditions said, and only then falls back to price
+    const RANK = { pass: 0, unverified: 1, fail: 2 };
+    const order = sortBy === 'verdict'
+      ? candidates.slice().sort((a, b) => {
+        const va = verified.find((x) => x.id === a.id); const vb = verified.find((x) => x.id === b.id);
+        const ra = va ? RANK[va.status] : 1; const rb = vb ? RANK[vb.status] : 1;
+        if (ra !== rb) return ra - rb;
+        const sa = va && va.verdict ? va.verdict.score : -Infinity;
+        const sb = vb && vb.verdict ? vb.verdict.score : -Infinity;
+        if (sa !== sb) return sb - sa;
+        return (a.priceEx == null ? Infinity : a.priceEx) - (b.priceEx == null ? Infinity : b.priceEx);
+      })
+      : candidates;
+    const rows = order.slice(0, 20).map((c) => {
       const v = verified.find((x) => x.id === c.id) || null;
       const fails = v && v.guards ? v.guards.filter((g) => g.status === 'fail') : [];
       const fmtDelta = (d) => {
@@ -149,6 +164,7 @@
         + (v ? statusTag(v.status) : '')
         + (fails.length ? `<small class="neg">${esc(fails.map((f) => t(METRIC_LABELS[f.metric] || f.metric)).join(', '))}</small>` : '')
         + (deltas ? `<small class="dim">${esc(deltas)}</small>` : '')
+        + (v && v.verdict ? `<small class="dim" title="${esc(v.verdict.verdict)}">${v.verdict.score > 0 ? '+' : ''}${v.verdict.score}</small>` : '')
         // only a candidate that actually passed can be worn: a failed or unchecked
         // one must not look like a result the player can take
         + (v && v.status === 'pass' ? `<button type="button" class="link" data-adopt="${esc(c.id)}">${t('Equip it')}</button>` : '')
@@ -166,6 +182,8 @@
       + `<button type="button" class="link" data-gq="search">${t('Search candidates')}</button>`
       + `<button type="button" class="link" data-gq="verify"${unverifiedLeft ? '' : ' disabled'}>${t('Check each with Path of Building')}</button>`
       + (moreLeft ? `<button type="button" class="link" data-gq="more">${t('Load more')}</button>` : '')
+      + `<select id="gqSort"><option value="price"${sortBy === 'price' ? ' selected' : ''}>${t('cheapest first')}</option>`
+      + `<option value="verdict"${sortBy === 'verdict' ? ' selected' : ''}>${t('best first')}</option></select>`
       + `<span class="dim small">${esc(workMsg)}</span></div>`
       + (rows || `<div class="dim small">${t('Nothing searched yet.')}</div>`)
       + `</div>`;
@@ -219,6 +237,9 @@
     const el = ev.target;
     if (!el || !el.dataset) return;
     if (el.id === 'gqSlot') { slot = el.value; temp = []; message = ''; await refresh(); return; }
+    if (el.id === 'gqSort') { sortBy = el.value; render(); return; }
+    if (el.id === 'gqBudget') { budget = el.value; return; }
+    if (el.id === 'gqCurrency') { currency = el.value; return; }
     if (el.dataset.gqSlider) {
       const text = el.dataset.gqSlider;
       const c = choices.get(text) || { action: 'keep', tier: 1 };
@@ -291,8 +312,10 @@
         // it goes instead of after a long silence
         const todo = candidates.filter((c) => !verified.some((v) => v.id === c.id)).slice(0, 10);
         working = true; workMsg = t('Checking with Path of Building…'); render();
-        for (let i = 0; i < todo.length; i += 5) {
-          const chunk = todo.slice(i, i + 5);
+        // one engine call per ten items: the queue serialises anyway, so fewer round
+        // trips is the only speed-up that actually helps
+        for (let i = 0; i < todo.length; i += 10) {
+          const chunk = todo.slice(i, i + 10);
           const r = await window.api.gearQueryVerify({ slot, candidates: chunk }).catch((err) => ({ ok: false, error: err.message }));
           if (!r || !r.ok) { workMsg = displayError((r && r.error) || 'check failed'); break; }
           for (const v of r.candidates || []) {

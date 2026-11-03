@@ -1578,7 +1578,14 @@ ipcMain.handle('gearquery:verify', async (_e, payload) => {
         const [r] = await pobEngine().evalItems([{ slot: pobSlot, text: c.text }]);
         if (!r || !r.ok) { out.push({ ...c, status: 'unverified', reason: (r && r.error) || 'Path of Building could not read this item' }); continue; }
         const rows = guardLib.evaluateGuards(merged, r.before, r.after, { weaponSet: store.settings.weaponSet || 0 });
-        out.push({ ...c, status: noConditions ? 'unverified' : guardLib.overall(rows), guards: rows, before: r.before, after: r.after, reason: noConditions ? 'no conditions set' : null });
+        // the same verdict the popup gives, so "which one is actually better" has an
+        // answer even when every candidate passes the conditions
+        let verdict = null;
+        try {
+          const j = pobVerdict.judge(r.before, r.after, pobWeights());
+          if (j) verdict = { score: j.score, verdict: j.verdict, breaks: (j.breaks || []).length, dpsPct: j.dps ? j.dps.pct : null };
+        } catch (_) { /* a missing verdict is not a failure */ }
+        out.push({ ...c, status: noConditions ? 'unverified' : guardLib.overall(rows), guards: rows, before: r.before, after: r.after, verdict, reason: noConditions ? 'no conditions set' : null });
       } catch (err) {
         out.push({ ...c, status: 'unverified', reason: err.message || String(err) });
       }
