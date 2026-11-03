@@ -24,9 +24,12 @@
   let busy = false;
   let message = '';
   let candidates = []; // listings from the trade search
-  let verified = null; // the same listings after Path of Building + the condition layers
+  let verified = []; // the listings that went through Path of Building + the condition layers
+  let searchCtx = null; // { league, searchId, ids, from } for "load more"
   let workMsg = '';
   let working = false;
+  let budget = ''; // max price, in the chosen currency
+  let currency = 'chaos';
 
   const firstNumber = (text) => {
     const m = String(text || '').match(/-?\d+(?:\.\d+)?/);
@@ -130,8 +133,8 @@
       + `<div class="dim small">${t('A temporary condition can tighten an inherited one, never loosen it.')}</div>`
       + (message ? `<div class="small ${message.ok ? 'pos' : 'neg'}">${esc(message.text)}</div>` : '')
       + `</div>`;
-    const rows = (verified || candidates).slice(0, 10).map((c) => {
-      const v = verified ? verified.find((x) => x.id === c.id) : null;
+    const rows = candidates.slice(0, 20).map((c) => {
+      const v = verified.find((x) => x.id === c.id) || null;
       const fails = v && v.guards ? v.guards.filter((g) => g.status === 'fail') : [];
       const fmtDelta = (d) => {
         const sign = d > 0 ? '+' : '';
@@ -151,9 +154,18 @@
         + (v && v.status === 'pass' ? `<button type="button" class="link" data-adopt="${esc(c.id)}">${t('Equip it')}</button>` : '')
         + `</div>`;
     }).join('');
+    const moreLeft = searchCtx && searchCtx.from < searchCtx.ids.length;
+    const unverifiedLeft = candidates.filter((c) => !verified.some((v) => v.id === c.id)).length;
     const resultsCard = `<div class="card-p gq-wide"><h3>${t('Candidates')}</h3>`
-      + `<div class="row"><button type="button" class="link" data-gq="search">${t('Search candidates')}</button>`
-      + `<button type="button" class="link" data-gq="verify"${candidates.length ? '' : ' disabled'}>${t('Check each with Path of Building')}</button>`
+      + `<div class="row"><input id="gqBudget" type="number" min="0" step="any" value="${esc(budget)}" placeholder="${t('max price')}"/>`
+      + `<select id="gqCurrency">`
+      + `<option value="chaos"${currency === 'chaos' ? ' selected' : ''}>chaos</option>`
+      + `<option value="divine"${currency === 'divine' ? ' selected' : ''}>divine</option>`
+      + `<option value="exalted"${currency === 'exalted' ? ' selected' : ''}>exalted</option>`
+      + `</select>`
+      + `<button type="button" class="link" data-gq="search">${t('Search candidates')}</button>`
+      + `<button type="button" class="link" data-gq="verify"${unverifiedLeft ? '' : ' disabled'}>${t('Check each with Path of Building')}</button>`
+      + (moreLeft ? `<button type="button" class="link" data-gq="more">${t('Load more')}</button>` : '')
       + `<span class="dim small">${esc(workMsg)}</span></div>`
       + (rows || `<div class="dim small">${t('Nothing searched yet.')}</div>`)
       + `</div>`;
@@ -248,18 +260,49 @@
       if (gq.dataset.gq === 'search') {
         const picks = requiredPicks();
         if (!picks.length) { workMsg = t('Pick at least one affix to require.'); render(); return; }
+        const maxPrice = Number(document.querySelector('#gqBudget').value);
+        budget = document.querySelector('#gqBudget').value;
+        currency = document.querySelector('#gqCurrency').value;
+        const cap = Number.isFinite(maxPrice) && maxPrice > 0 ? { max: maxPrice, currency } : undefined;
         working = true; workMsg = t('Searching the trade site…'); render();
-        const r = await window.api.gearQuerySearch({ slot, picks }).catch((err) => ({ ok: false, error: err.message }));
+        const r = await window.api.gearQuerySearch({ slot, picks, budget: cap }).catch((err) => ({ ok: false, error: err.message }));
         working = false;
-        if (!r || !r.ok) { candidates = []; verified = null; workMsg = displayError((r && r.error) || 'search failed'); }
-        else { candidates = r.candidates || []; verified = null; workMsg = t('{0} candidates', r.total == null ? candidates.length : r.total); }
+        if (!r || !r.ok) { candidates = []; verified = []; searchCtx = null; workMsg = displayError((r && r.error) || 'search failed'); }
+        else {
+          candidates = r.candidates || []; verified = [];
+          searchCtx = r.ids && r.ids.length ? { league: r.league, searchId: r.searchId, ids: r.ids, from: candidates.length } : null;
+          workMsg = t('{0} candidates', r.total == null ? candidates.length : r.total);
+        }
+        render();
+      } else if (gq.dataset.gq === 'more') {
+        if (!searchCtx) return;
+        working = true; workMsg = t('Loading more…'); render();
+        const r = await window.api.gearQueryMore({ slot, league: searchCtx.league, searchId: searchCtx.searchId, ids: searchCtx.ids, from: searchCtx.from, count: 10 }).catch((err) => ({ ok: false, error: err.message }));
+        working = false;
+        if (!r || !r.ok) workMsg = displayError((r && r.error) || 'load failed');
+        else {
+          candidates = candidates.concat(r.candidates || []);
+          searchCtx.from += 10;
+          workMsg = t('{0} candidates', candidates.length);
+        }
         render();
       } else if (gq.dataset.gq === 'verify') {
+        // in small batches: each batch is one engine run, and the table fills in as
+        // it goes instead of after a long silence
+        const todo = candidates.filter((c) => !verified.some((v) => v.id === c.id)).slice(0, 10);
         working = true; workMsg = t('Checking with Path of Building…'); render();
-        const r = await window.api.gearQueryVerify({ slot, candidates }).catch((err) => ({ ok: false, error: err.message }));
+        for (let i = 0; i < todo.length; i += 5) {
+          const chunk = todo.slice(i, i + 5);
+          const r = await window.api.gearQueryVerify({ slot, candidates: chunk }).catch((err) => ({ ok: false, error: err.message }));
+          if (!r || !r.ok) { workMsg = displayError((r && r.error) || 'check failed'); break; }
+          for (const v of r.candidates || []) {
+            const at = verified.findIndex((x) => x.id === v.id);
+            if (at >= 0) verified[at] = v; else verified.push(v);
+          }
+          workMsg = t('Checked {0} items', verified.length);
+          render();
+        }
         working = false;
-        if (!r || !r.ok) workMsg = displayError((r && r.error) || 'check failed');
-        else { verified = r.candidates || []; workMsg = t('Checked {0} items', verified.length); }
         render();
       }
       return;

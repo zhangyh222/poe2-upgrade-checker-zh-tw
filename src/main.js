@@ -1517,7 +1517,7 @@ ipcMain.handle('gearquery:search', async (_e, payload) => {
     trade.applyBudget(body, budgetNow(payload.budget));
     const r = await runSearch(pickLeague(d, payload.league), body, `gear query ${slot}`);
     if (!r || !r.ok) return r || { ok: false, error: { key: 'The trade search failed.', args: [] } };
-    if (!r.ids || !r.ids.length) return { ok: true, total: r.total || 0, candidates: [], unmatched };
+    if (!r.ids || !r.ids.length) return { ok: true, total: r.total || 0, candidates: [], unmatched, ids: [], league: r.league, searchId: r.searchId };
     const raw = await fetchListings(r.league, r.searchId, r.ids.slice(0, 10));
     const rates = { ...(store.settings.currencyRates || {}), ...(store.settings.divineRate ? { divine: store.settings.divineRate } : {}) };
     const candidates = [];
@@ -1527,9 +1527,36 @@ ipcMain.handle('gearquery:search', async (_e, payload) => {
       candidates.push({ id: x.id, name: s.item.name, text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
     }
     log(`gear query: ${candidates.length} candidates for ${slot} (${picks.length} affixes)`);
-    return { ok: true, total: r.total, candidates, unmatched };
+    // the ids stay on the client so "more" costs no extra search (the trade site
+    // allows only a few per minute); each extra page is one fetch call
+    return { ok: true, total: r.total, candidates, unmatched, ids: r.ids.slice(0, 100), league: r.league, searchId: r.searchId };
   } catch (err) {
     log('gear query: ' + (err.message || err));
+    return { ok: false, error: { key: 'The trade search failed: {0}', args: [err.message || String(err)] } };
+  }
+});
+
+// The next page of the same search: no new trade search, just another fetch.
+ipcMain.handle('gearquery:more', async (_e, payload) => {
+  try {
+    const { league, searchId, ids, from, count } = payload || {};
+    if (!league || !searchId || !Array.isArray(ids) || !ids.length) return { ok: false, error: { key: 'No search to load more from.', args: [] } };
+    const start = Math.max(0, Number(from) || 0);
+    const want = Math.max(1, Math.min(20, Number(count) || 10));
+    const slice = ids.slice(start, start + want);
+    if (!slice.length) return { ok: true, candidates: [], done: true };
+    const item = (store.equipped || {})[payload.slot];
+    const raw = await fetchListings(league, searchId, slice);
+    const rates = { ...(store.settings.currencyRates || {}), ...(store.settings.divineRate ? { divine: store.settings.divineRate } : {}) };
+    const candidates = [];
+    for (const x of raw) {
+      const s = listingLib.summarise(x, item && item.itemClass, rates);
+      if (!s || !s.item) continue;
+      candidates.push({ id: x.id, name: s.item.name, text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
+    }
+    return { ok: true, candidates, done: start + want >= ids.length };
+  } catch (err) {
+    log('gear more: ' + (err.message || err));
     return { ok: false, error: { key: 'The trade search failed: {0}', args: [err.message || String(err)] } };
   }
 });
