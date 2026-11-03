@@ -175,8 +175,10 @@
       };
       const deltas = v && v.guards ? v.guards.filter((g) => g.delta != null).slice(0, 3)
         .map((g) => `${esc(t(METRIC_LABELS[g.metric] || g.metric))} ${fmtDelta(g.delta)}`).join(' · ') : '';
+      // the price is the cheapest listing; say how many others share the item
+      const others = c.listings > 1 ? ` <small class="dim">×${c.listings}</small>` : '';
       return `<div class="row gq-candidate"><span class="grow">${esc(gn(c.name))}</span>`
-        + `<small class="dim">${esc(c.priceText || '')}</small>`
+        + `<small class="dim">${esc(c.priceText || '')}</small>${others}`
         + (v ? statusTag(v.status) : '')
         + (fails.length ? `<small class="neg">${esc(fails.map((f) => t(METRIC_LABELS[f.metric] || f.metric)).join(', '))}</small>` : '')
         + (deltas ? `<small class="dim">${esc(deltas)}</small>` : '')

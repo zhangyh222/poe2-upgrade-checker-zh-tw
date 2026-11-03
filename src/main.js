@@ -1567,17 +1567,7 @@ const firstNumber = (text) => {
 };
 // the same unique sold by ten people is one candidate, not ten: keep the cheapest
 // (the list is price-sorted) and let the price column stand for the rest
-function dedupeCandidates(list) {
-  const seen = new Set();
-  const out = [];
-  for (const c of list) {
-    const key = `${String(c.name || '').toLowerCase()}|${String(c.baseType || '').toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(c);
-  }
-  return out;
-}
+const { dedupeCandidates } = require('./core/listing-dedupe');
 ipcMain.handle('gearquery:search', async (_e, payload) => {
   try {
     const { slot, picks } = payload || {};
