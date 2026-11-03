@@ -16,6 +16,7 @@
   const STORAGE_KEY = 'poe2uc-lang';
 
   const zh = {
+    "Your character or build changed. Check the item again.": "角色或構築已變更，請重新比較物品。",
     ", ": "、",
     "·": "·",
     // ---- verdicts (render.js, results.js, gear-explain) ----
@@ -1229,6 +1230,7 @@
   // 简体中文界面文案；键与繁体词典保持一致，游戏复制文本及属性数据库内容不在此转换。
   // Simplified Chinese is limited to exact application UI keys. Copied item text and raw game data are not transformed.
   const zhCN = {
+    "Your character or build changed. Check the item again.": "角色或构筑已变更，请重新比较物品。",
     "Imported {0} items.": "已导入 {0} 件物品。",
     "Imported your resistances.": "已导入你的抗性。",
     "Imported character: {0}.": "已导入角色：{0}。",

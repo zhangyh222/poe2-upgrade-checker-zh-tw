@@ -126,6 +126,7 @@ const resLib = require('./core/resists');
 // copied in game replace PoB's, so it calculates with what you're actually wearing.
 const { createEngine } = require('./pobengine');
 const pobVerdict = require('./core/pobverdict');
+const { createCalculationContext } = require('./core/calculation-context');
 let pobEng = null;
 function pobEngine() {
   if (!pobEng) {
@@ -147,6 +148,13 @@ function pobOverrides() {
 }
 function pobOn() { return store.settings.usePob !== false && pobEngine().available() && !!pobXml(); }
 let pobSheetGen = 0; // bumped whenever build or gear changes, so the Character page recalculates
+const pobContext = createCalculationContext(() => ({
+  profileId: store.data.activeProfile, revision: pobSheetGen,
+  weaponSet: store.settings.weaponSet || 0,
+  skillWeaponSets: store.settings.skillWeaponSets || {},
+  priorities: store.settings.priorities || {},
+  damageWeight: store.settings.pobDamageWeight, enabled: store.settings.usePob !== false,
+}));
 function pobSync() {
   pobQueries.clear(); pobSheetGen++;
   if (pobOn()) pobEngine().setBuild(pobXml(), pobOverrides());
@@ -165,6 +173,8 @@ const pobWeights = () => ({ damageWeight: store.settings.pobDamageWeight == null
 // list: [{ item, slot }] -> a PoB verdict for each (or null)
 async function pobJudge(list) {
   if (!pobOn() || !list.length) return list.map(() => null);
+  const weights = pobWeights();
+  const context = pobContext.capture({ kind: 'compare' });
   const req = []; const idx = [];
   list.forEach((x, i) => {
     const text = x.item && (x.item.raw || x.item.listingText);
@@ -178,7 +188,7 @@ async function pobJudge(list) {
   const per = list.map(() => []);
   const errs = list.map(() => null);
   if (req.length) {
-    const res = await pobEngine().evalItems(req);
+    const res = await pobContext.run(context, () => pobEngine().evalItems(req));
     res.forEach((r, k) => {
       if (!r || !r.ok) { if (r && r.error && !errs[idx[k][0]]) errs[idx[k][0]] = String(r.error); return; }
       if (r.multi) {
@@ -186,17 +196,18 @@ async function pobJudge(list) {
         const nm = list[idx[k][0]].item && list[idx[k][0]].item.name;
         const own = r.multi.filter((m) => nm && m.replacing === nm);
         for (const m of (own.length ? own : r.multi)) {
-          const j = pobVerdict.judge(r.before, m.after, pobWeights());
+          const j = pobVerdict.judge(r.before, m.after, weights);
           if (j) { j.slot = idx[k][1]; j.socket = { slot: m.slot, label: m.label, replacing: m.replacing || null }; per[idx[k][0]].push(j); }
         }
         return;
       }
-      const j = pobVerdict.judge(r.before, r.after, pobWeights());
+      const j = pobVerdict.judge(r.before, r.after, weights);
       if (j) { j.slot = idx[k][1]; per[idx[k][0]].push(j); }
     });
   }
   const out = per.map((arr) => pobVerdict.best(arr));
   out.errors = errs; // why PoB couldn't judge an item, when it said
+  out.context = context;
   return out;
 }
 // can Path of Building judge this item? (charms and flasks use the gear score)
@@ -563,6 +574,7 @@ let popupItem = null;
 let popupSeq = 0; // bumped by every new render; a late PoB answer for an older one is dropped
 function showResult(result) {
   const seq = ++popupSeq;
+  const context = pobContext.capture({ kind: 'popup', seq });
   popupItem = result && result.item ? recentItems.get(result.item.id) || result.item : null;
   if (!popup) createPopup();
   pendingShow = true; // every new copy re-positions the popup at the cursor
@@ -579,7 +591,7 @@ function showResult(result) {
       if (!j) result.pobError = pobErrorOf(res, 0);
       else applyPob(result, j);
     }).catch((err) => { result.pobPending = false; result.pobError = err.message; log('pob: ' + err.message); })
-      .then(() => { if (seq === popupSeq && popupItem === item && popup && !popup.isDestroyed() && popup.isVisible()) popup.webContents.send('popup:result', serialise(result)); });
+      .then(() => { if (pobContext.isCurrent(context) && seq === popupSeq && popupItem === item && popup && !popup.isDestroyed() && popup.isVisible()) popup.webContents.send('popup:result', serialise(result)); });
   }
   // Renderer replies with its height via popup:resize; show anyway if it doesn't.
   clearTimeout(showFallback);
@@ -795,6 +807,7 @@ function resolveSlotOf(item) {
 
 function refreshAll() {
   if (popupItem && popup && popup.isVisible()) {
+    const context = pobContext.capture({ kind: 'popup-refresh' });
     const r = evaluate(popupItem);
     const seq = ++popupSeq;
     const withPob = r && r.ok && !r.isEquipped && pobOn() && pobCanJudge(popupItem, r.targetSlot);
@@ -808,7 +821,7 @@ function refreshAll() {
         r.pobPending = false;
         if (j) applyPob(r, j); else r.pobError = pobErrorOf(res, 0);
       }).catch((err) => { r.pobPending = false; r.pobError = err.message; log('pob: ' + err.message); })
-        .then(() => { if (seq === popupSeq && popupItem === item && popup && !popup.isDestroyed() && popup.isVisible()) popup.webContents.send('popup:result', serialise({ ...r, keepState: true })); });
+        .then(() => { if (pobContext.isCurrent(context) && seq === popupSeq && popupItem === item && popup && !popup.isDestroyed() && popup.isVisible()) popup.webContents.send('popup:result', serialise({ ...r, keepState: true })); });
     }
   }
   if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('settings:changed');
@@ -822,11 +835,11 @@ ipcMain.handle('equip', (_e, slot, ref) => {
   else item = lastItem;
   if (!item || !SLOTS.includes(slot)) return false;
   log(`equip ${slot}: "${item.name}"`);
-  setTimeout(pobSync, 0);
   const before = store.equipped[slot];
   if (store.settings.resists) store.setSetting('resists', resLib.rebase(store.settings.resists, before, item));
   store.setEquipped(slot, item);
   store.noteStats(item);
+  pobSync();
   refreshAll();
   return true;
 });
@@ -1025,36 +1038,43 @@ const pobLastSummary = new Map();
 // The page's offence numbers are the main damage skill's, so the weapon set that skill is marked
 // with decides which set Path of Building calculates the whole page on (its weapons and its
 // set-only passives – life, resistances and damage all follow).
-async function alignWeaponSetToMain() {
+async function alignWeaponSetToMain(engine) {
+  const context = pobContext.capture({ kind: 'align-weapon-set' });
   const picks = store.settings.skillWeaponSets || {};
   const pid = store.data.activeProfile || 'main';
-  const s = await pobEngine().sheet();
+  const s = await pobContext.run(context, () => engine.sheet());
   const main = (s && s.skills || []).find((x) => x.main);
-  if (!main) return false;
+  if (!main) return context;
   // a skill socketed in a weapon slot knows its own set; anything else takes what you marked
   const v = main.weaponSet ? String(main.weaponSet) : picks[`${pid}|${main.key || ''}`];
   const want = v === '2' ? 2 : v === '1' ? 1 : 0;
   const cur = s.weaponSwap ? 2 : 1;
-  if (!want) return false;
-  if (want === cur) { pobEngine().setWeaponSetValue(want); return false; }
-  await pobEngine().setWeaponSet(want);
+  if (!want) return context;
+  if (want === cur) { engine.setWeaponSetValue(want); return context; }
+  await pobContext.run(context, () => engine.setWeaponSet(want));
   pobQueries.clear(); pobSheetGen++;
   pobLastSheet.clear(); pobLastSources.clear(); pobLastSummary.clear();
-  return true;
+  return pobContext.capture({ kind: 'aligned-weapon-set' });
 }
 // Character page: everything Path of Building calculates for your character (with the gear you
 // copied in game), plus what the app itself knows. Kept per character so it shows instantly next time.
 const pobLastSheet = new Map();
 ipcMain.handle('pob:sheet', async (_e, refresh) => {
+  let context = pobContext.capture({ kind: 'sheet' });
   const key = store.data.activeProfile;
   const out = { on: pobOn(), hasBuild: !!pobXml(), available: pobEngine().available(), enabled: store.settings.usePob !== false, resists: liveResists() || null };
   if (!out.on) return out;
   if (!refresh && pobLastSheet.has(key) && pobLastSheet.get(key).gen === pobSheetGen) return { ...out, sheet: pobLastSheet.get(key).sheet, at: pobLastSheet.get(key).at };
   try {
     if (refresh) pobEngine().resetFailure(); // you pressed Refresh: try again now
-    await pobEngine().ensureLoaded();
-    try { await alignWeaponSetToMain(); } catch (err) { log('pob weapon set: ' + (err.message || err)); }
-    const sheet = await pobEngine().sheet();
+    const sheet = await pobEngine().transaction(async (engine) => {
+      await pobContext.run(context, () => engine.ensureLoaded());
+      // A failed alignment may have changed the engine. Propagate it so the
+      // transaction discards the process instead of caching uncertain values.
+      context = await alignWeaponSetToMain(engine);
+      return pobContext.run(context, () => engine.sheet());
+    });
+    pobContext.assertCurrent(context);
     // PoB replaces every non-ASCII byte in an item name with "?" (a rare's Chinese name has no
     // English form), so show the name you copied instead of a row of question marks.
     // With the second weapon set on, PoB's "Weapon 1"/"Weapon 2" are this app's "Weapon 2"/"Offhand 2".
@@ -1096,6 +1116,7 @@ ipcMain.handle('pob:sheet', async (_e, refresh) => {
     pobLastSheet.set(key, { sheet, at: Date.now(), gen: pobSheetGen });
     return { ...out, sheet, at: Date.now() };
   } catch (err) {
+    if (!pobContext.isCurrent(context)) return { ...out, stale: true, sheet: null, error: { key: 'Your character or build changed. Check the item again.' } };
     log('pob sheet: ' + (err.message || err));
     const last = pobLastSheet.get(key);
     return { ...out, error: { key: 'Path of Building could not load the character sheet: {0}', args: [err.message || String(err)] }, sheet: last ? last.sheet : null, at: last ? last.at : null };
@@ -1105,12 +1126,13 @@ ipcMain.handle('pob:sheet', async (_e, refresh) => {
 // per character and calculation, so the page can redraw while zooming without asking PoB again.
 const pobLastTree = new Map();
 ipcMain.handle('pob:tree', async () => {
+  const context = pobContext.capture({ kind: 'tree' });
   const key = `${store.data.activeProfile}|${pobSheetGen}`;
   if (pobLastTree.has(key)) return pobLastTree.get(key);
   if (!pobOn()) return { ok: false, error: { key: 'Path of Building is switched off on My gear (Judge items with Path of Building). Switch it on to see your character sheet.' } };
   try {
-    await pobEngine().ensureLoaded();
-    const res = await pobEngine().send({ cmd: 'passivetree' }, 120000);
+    await pobContext.run(context, () => pobEngine().ensureLoaded());
+    const res = await pobContext.run(context, () => pobEngine().send({ cmd: 'passivetree' }, 120000));
     pobLastTree.clear();
     pobLastTree.set(key, res);
     return res;
@@ -1173,12 +1195,13 @@ ipcMain.handle('panel:fit', (e, height, width) => {
 // Cached per character and per calculation generation so hovering is instant.
 const pobLastSources = new Map();
 ipcMain.handle('pob:sources', async (_e, stat) => {
+  const context = pobContext.capture({ kind: 'sources', stat });
   const key = `${store.data.activeProfile}|${pobSheetGen}|${stat}`;
   if (pobLastSources.has(key)) return pobLastSources.get(key);
   if (!pobOn()) return { ok: false, error: { key: 'Path of Building is switched off on My gear (Judge items with Path of Building). Switch it on to see your character sheet.' } };
   try {
-    await pobEngine().ensureLoaded();
-    const res = await pobEngine().send({ cmd: 'sources', stat }, 60000);
+    await pobContext.run(context, () => pobEngine().ensureLoaded());
+    const res = await pobContext.run(context, () => pobEngine().send({ cmd: 'sources', stat }, 60000));
     // PoB writes "?" for every non-ASCII byte of an item name, so a Chinese weapon turns into a row
     // of question marks: show the name you copied in game instead
     if (res && res.weapons) {
@@ -1202,20 +1225,28 @@ ipcMain.handle('pob:sources', async (_e, stat) => {
 ipcMain.handle('pob:weaponSet', async (_e, n) => {
   const set = n === 2 ? 2 : 1;
   store.setSetting('weaponSet', set);
+  // Invalidate before awaiting: even two rapid requests for the same set must
+  // not let the earlier request write settings for a later character.
+  pobSheetGen++;
+  let context = pobContext.capture({ kind: 'weapon-set' });
   if (!pobOn()) return { ok: true, set };
   try {
-    await pobEngine().ensureLoaded();
-    const r = await pobEngine().setWeaponSet(set);
-    // the page is the main damage skill's, so the switch marks that skill too and stays in sync
-    try {
-      const s = await pobEngine().sheet();
+    const r = await pobEngine().transaction(async (engine) => {
+      await pobContext.run(context, () => engine.ensureLoaded());
+      const result = await pobContext.run(context, () => engine.setWeaponSet(set));
+      if (!result.ok) throw new Error(result.error || 'Path of Building could not switch the weapon set.');
+      // Reading the selected main skill belongs to the same lease as switching.
+      const s = await pobContext.run(context, () => engine.sheet());
       const main = ((s && s.skills) || []).find((x) => x.main);
       if (main && main.key && !main.weaponSet) {
         const all = { ...(store.settings.skillWeaponSets || {}) };
         all[`${store.data.activeProfile || 'main'}|${main.key}`] = String(set);
         store.setSetting('skillWeaponSets', all);
+        context = pobContext.capture({ kind: 'weapon-set-marked' });
       }
-    } catch (err) { log('pob weapon set mark: ' + (err.message || err)); }
+      return result;
+    });
+    pobContext.assertCurrent(context);
     // every number on the character page is calculated on that set: drop everything cached
     pobQueries.clear(); pobSheetGen++;
     pobLastSheet.clear(); pobLastSources.clear(); pobLastSummary.clear();
@@ -1227,12 +1258,14 @@ ipcMain.handle('pob:weaponSet', async (_e, n) => {
   }
 });
 ipcMain.handle('pob:status', async (_e, load) => {
+  const context = pobContext.capture({ kind: 'status' });
   const eng = pobEngine();
   const out = { available: eng.available(), hasBuild: !!pobXml(), on: pobOn(), enabled: store.settings.usePob !== false };
   if (load && pobOn()) {
     eng.resetFailure();
-    try { out.summary = pobSummary(await eng.ensureLoaded()); } catch (err) { out.error = { key: 'Path of Building could not load the build: {0}', args: [err.message || String(err)] }; }
+    try { out.summary = pobSummary(await pobContext.run(context, () => eng.ensureLoaded())); } catch (err) { out.error = { key: 'Path of Building could not load the build: {0}', args: [err.message || String(err)] }; }
   } else if (eng.info()) out.summary = pobSummary(eng.info());
+  if (!pobContext.isCurrent(context)) return { ...out, summary: null, stale: true };
   // keep showing the last good summary while the engine reloads after a gear change
   const key = store.data.activeProfile;
   if (out.summary) pobLastSummary.set(key, out.summary);
@@ -1280,6 +1313,7 @@ ipcMain.handle('state:get', () => JSON.parse(JSON.stringify({
 })));
 
 ipcMain.handle('evaluate:text', (_e, text) => {
+  const context = pobContext.capture({ kind: 'evaluate-text' });
   const item = parseItem(text);
   if (!item) return { ok: false, reason: { key: 'That doesn\'t look like PoE2 item text. In game, hover an item and press Ctrl+C.' } };
   store.noteStats(item);
@@ -1290,7 +1324,7 @@ ipcMain.handle('evaluate:text', (_e, text) => {
   if (!(r && r.ok && !r.isEquipped && pobOn() && pobCanJudge(item, r.targetSlot))) return serialise(r);
   return pobJudge([{ item, slot: r.targetSlot }]).then((res) => { if (res[0]) applyPob(r, res[0]); else r.pobError = pobErrorOf(res, 0); })
     .catch((err) => { r.pobError = err.message; log('pob: ' + err.message); })
-    .then(() => serialise(r));
+    .then(() => pobContext.isCurrent(context) ? serialise(r) : { ok: false, stale: true, reason: { key: 'Your character or build changed. Check the item again.' } });
 });
 
 ipcMain.on('open:settings', () => openSettings());

@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/core.test.js test/trade.test.js test/rates.test.js test/listing.test.js test/pob.test.js test/pobverdict.test.js test/price.test.js test/affixes.test.js test/datadir.test.js",
+    "test": "node --test test/core.test.js test/trade.test.js test/rates.test.js test/listing.test.js test/pob.test.js test/pobverdict.test.js test/price.test.js test/affixes.test.js test/datadir.test.js test/calculation-context.test.js test/operation-queue.test.js",
     "pob": "node tools/get-pob.js",
     "dist": "node tools/get-pob.js && npx electron-builder@25.1.8 --win nsis portable --publish never && node tools/clean-app-data.js --yes",
     "dist:linux": "node tools/get-pob.js && npx electron-builder@25.1.8 --linux AppImage --publish never && node tools/clean-app-data.js --yes",

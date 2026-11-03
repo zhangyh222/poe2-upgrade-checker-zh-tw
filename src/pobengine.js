@@ -13,6 +13,8 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { createOperationQueue } = require('./core/operation-queue');
+const { StaleCalculationError } = require('./core/calculation-context');
 
 function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
   const base = packaged ? path.join(resourcesPath, 'pob') : path.join(appPath, 'vendor', 'pob');
@@ -22,6 +24,7 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
 
   let proc = null; let ready = null; let buf = ''; let nextId = 1;
   const waiting = new Map();
+  const operations = createOperationQueue();
   let buildXml = null; let buildInfo = null; let loading = null;
   let idleTimer = null;
   let lastError = null;
@@ -140,19 +143,24 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     if (over) overrides = over;
     buildInfo = null;
     const myGen = gen;
+    // An in-flight load must not borrow overrides from a newly selected build.
+    const requestedOverrides = overrides.map((item) => ({ ...item }));
+    const requestedWeaponSet = weaponSet;
     const p = request({ cmd: 'load', xml }, 120000).then(async (r) => {
       if (!r.ok) throw new Error(r.error || 'Path of Building could not load the build.');
       r.pobGear = r.gear;
-      if (overrides.length) {
-        const e = await request({ cmd: 'equip', items: overrides }, 60000);
-        if (e.ok) { e.pobGear = r.gear; e.pobStats = r.stats; r = e; }
+      if (requestedOverrides.length) {
+        const e = await request({ cmd: 'equip', items: requestedOverrides }, 60000);
+        if (!e.ok) throw new Error(e.error || 'Path of Building could not apply the equipped items.');
+        e.pobGear = r.gear; e.pobStats = r.stats; r = e;
       }
       if (myGen === gen) { buildInfo = r; infoGen = myGen; } // a newer build came in meanwhile: that one wins
       // the build's XML carries its own weapon set; the one the app is showing wins (0: follow the build)
-      const target = weaponSet || (r.weaponSwap ? 2 : 1);
+      const target = requestedWeaponSet || (r.weaponSwap ? 2 : 1);
       if (myGen === gen && target !== (r.weaponSwap ? 2 : 1)) {
-        const s = await request({ cmd: 'weaponset', set: target }, 60000).catch(() => null);
-        if (s && s.ok) { r = { ...r, ...s }; buildInfo = r; }
+        const s = await request({ cmd: 'weaponset', set: target }, 60000);
+        if (!s.ok) throw new Error(s.error || 'Path of Building could not restore the weapon set.');
+        r = { ...r, ...s }; buildInfo = r;
       }
       return r;
     }).finally(() => { if (loading === p) loading = null; });
@@ -189,21 +197,59 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     });
   }
 
+  async function sheet() {
+    if (!buildXml) return null;
+    const r = await request({ cmd: 'sheet' }, 60000);
+    if (!r.ok) throw new Error(r.error || 'Path of Building could not read the character.');
+    return r;
+  }
+  async function ensureLoaded() {
+    if (!buildXml) return null;
+    for (let i = 0; i < 3 && (!buildInfo || infoGen !== gen); i++) await (loading || loadBuild(buildXml));
+    if (!buildInfo || infoGen !== gen) throw new StaleCalculationError();
+    return buildInfo;
+  }
+  // Only this unqueued facade is passed to transaction callbacks. Calling the
+  // public queued API from inside a transaction would wait on its own lease.
+  const setWeaponSetValue = (n) => { weaponSet = n === 2 ? 2 : n === 1 ? 1 : 0; };
+  const session = Object.freeze({ ensureLoaded, evalItems, makeQuery, setWeaponSet, setWeaponSetValue, sheet, send: request });
+  function transaction(action, options = {}) {
+    const version = gen;
+    return operations.run(async () => {
+      if (version !== gen) throw new StaleCalculationError();
+      const previousWeaponSet = weaponSet;
+      try {
+        const result = await action(session);
+        if (options.signal && options.signal.aborted) {
+          const error = new Error('Calculation cancelled.'); error.name = 'AbortError'; throw error;
+        }
+        if (version !== gen) throw new StaleCalculationError();
+        return result;
+      } catch (err) {
+        // A timeout or partial mutation leaves the engine uncertain. Stop this
+        // process; the next operation reloads XML + overrides + selected set.
+        buildInfo = null; infoGen = -1;
+        if (version === gen) weaponSet = previousWeaponSet;
+        stop();
+        throw err;
+      }
+    }, options);
+  }
+
   return {
-    available, start, stop, resetFailure, loadBuild, setBuild, evalItems, makeQuery,
-    setWeaponSet,
-    setWeaponSetValue: (n) => { weaponSet = n === 2 ? 2 : n === 1 ? 1 : 0; },
+    available, start, stop, resetFailure, setBuild, transaction,
+    loadBuild: (xml, over) => { setBuild(xml, over === undefined ? overrides : over); return transaction((engine) => engine.ensureLoaded()); },
+    evalItems: (items) => transaction((engine) => engine.evalItems(items)),
+    makeQuery: (opts) => transaction((engine) => engine.makeQuery(opts)),
+    setWeaponSet: (n) => transaction((engine) => engine.setWeaponSet(n)),
+    setWeaponSetValue,
     weaponSet: () => weaponSet,
-    kill, sheet: async () => { if (!buildXml) return null; const r = await request({ cmd: "sheet" }, 60000); if (!r.ok) throw new Error(r.error || "Path of Building could not read the character."); return r; },
-    ensureLoaded: async () => {
-      if (!buildXml) return null;
-      for (let i = 0; i < 3 && (!buildInfo || infoGen !== gen); i++) await (loading || loadBuild(buildXml));
-      return buildInfo;
-    },
+    kill, sheet: () => transaction((engine) => engine.sheet()),
+    ensureLoaded: () => transaction((engine) => engine.ensureLoaded()),
     hasBuild: () => !!buildXml,
     info: () => buildInfo,
     lastError: () => lastError,
-    send: (obj, timeoutMs) => request(obj, timeoutMs),
+    send: (obj, timeoutMs) => transaction((engine) => engine.send(obj, timeoutMs)),
     paths: { base, srcDir, runtimeDir, serverLua },
   };
 }
