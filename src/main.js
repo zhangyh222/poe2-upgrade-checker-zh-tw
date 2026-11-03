@@ -1638,6 +1638,18 @@ ipcMain.handle('gearquery:verify', async (_e, payload) => {
   }
 });
 
+// the route to one passive node, so the tree can draw it instead of only marking it
+ipcMain.handle('nodes:path', async (_e, id) => {
+  try {
+    await pobEngine().ensureLoaded();
+    const r = await pobEngine().nodePath(id);
+    return r && r.ok ? r : { ok: false, error: (r && r.error) || 'Path of Building could not trace that node' };
+  } catch (err) {
+    log('node path: ' + (err.message || err));
+    return { ok: false, error: { key: 'Path of Building could not trace the passive path: {0}', args: [err.message || String(err)] } };
+  }
+});
+
 // passive node search with the points each match costs from what is allocated
 ipcMain.handle('nodes:search', async (_e, query, limit) => {
   try {

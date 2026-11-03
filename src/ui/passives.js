@@ -40,6 +40,8 @@
   let hover = null;
   let matches = new Set();
   let searchInfo = new Map(); // id -> { cost, allocated } from the engine's search
+  let path = null; // the node ids from something allocated to the picked node
+  let pathCost = null;
   let filter = null; // a legend chip picked: highlight/zoom just those nodes
   let dragging = null;
 
@@ -171,6 +173,24 @@
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+
+    // the route to the node the player picked: drawn over the links, under the dots
+    if (path && path.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = '#7fd3ff';
+      ctx.lineWidth = Math.max(2, Math.min(5, view.s * 30));
+      ctx.globalAlpha = 0.95;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 1; i < path.length; i++) {
+        const a = byId.get(path[i - 1].id); const b = byId.get(path[i].id);
+        if (!a || !b) continue;
+        ctx.moveTo(a.x * view.s + view.x, a.y * view.s + view.y);
+        ctx.lineTo(b.x * view.s + view.x, b.y * view.s + view.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // nodes
     // node size follows the space between nodes, so the tree stays readable at any zoom
@@ -379,6 +399,7 @@
     const seq = ++searchSeq;
     matches = new Set();
     searchInfo = new Map();
+    path = null; pathCost = null; renderPathNote(); // a new search is a new question
     if (!q) { renderResults(null); draw(); return; }
     matches = localMatches(q);
     renderResults(null);
@@ -395,6 +416,29 @@
     } catch (_) { /* keep the local matches */ }
   }
 
+  function renderPathNote() {
+    const el = document.querySelector('#passPath');
+    if (!el) return;
+    if (!path || !path.length) { el.innerHTML = ''; return; }
+    const names = path.map((p) => esc(gn(p.name) || p.name)).join(' → ');
+    el.innerHTML = `<span class="dim small">${esc(t('Path ({0} points):', pathCost == null ? '?' : pathCost))}</span> ${names}`;
+  }
+
+  // the route is fetched when a node is picked, not for every search hit: it is a
+  // separate walk and only one node at a time is being looked at
+  async function tracePath(n) {
+    path = null; pathCost = null;
+    renderPathNote();
+    try {
+      const r = await window.api.nodePath(n.id).catch(() => null);
+      if (r && r.ok && r.path && r.path.length) {
+        path = r.path; pathCost = r.cost;
+        renderPathNote();
+        draw();
+      }
+    } catch (_) { /* no path is a valid answer */ }
+  }
+
   function focusNode(n) {
     const w = canvas.clientWidth || 800; const h = canvas.clientHeight || 520;
     view.s = Math.max(0.12, view.s);
@@ -403,6 +447,7 @@
     hover = n;
     draw();
     showTip(n, w / 2, h / 2);
+    tracePath(n);
   }
 
   async function load(refresh) {

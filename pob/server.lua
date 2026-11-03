@@ -1272,6 +1272,7 @@ local function searchNodes(req)
 
   -- cost in unallocated nodes from anything already allocated
   local cost, cur, nxt, seen = {}, {}, {}, {}
+  local parent = {} -- which node we came from, for drawing the path
   for id in pairs(spec.allocNodes or {}) do
     cost[id] = 0; seen[id] = true; cur[#cur + 1] = id
   end
@@ -1284,6 +1285,7 @@ local function searchNodes(req)
         local other = tonumber(c.id)
         if other and not seen[other] then
           seen[other] = true
+          parent[other] = id
           if spec.allocNodes[other] then cost[other] = spent; nextCur[#nextCur + 1] = other
           else cost[other] = spent + 1; nxt[#nxt + 1] = other end
         end
@@ -1328,6 +1330,54 @@ local function searchNodes(req)
   local out = {}
   for i = 1, math.min(#hits, limit) do out[i] = hits[i] end
   return { ok = true, query = q, total = #hits, nodes = out }
+end
+
+-- The shortest walk from anything allocated to one node, as node ids in order.
+-- Same 0-1 BFS as the search (allocated steps are free), with the parent kept so
+-- the page can draw the actual route instead of guessing a line between two dots.
+local function nodePath(req)
+  -- "node", not "id": the envelope uses id for the reply correlation
+  local target = tonumber(req.node)
+  local spec = build.spec
+  local tree = spec and spec.tree
+  if not tree then return { ok = false, error = "Path of Building hasn't loaded a passive tree." } end
+  if not target or not (tree.nodes[target] or tree.nodes[tostring(target)]) then return { ok = false, error = "no such node" } end
+  local function info(id)
+    local node = tree.nodes[id] or tree.nodes[tostring(id)]
+    return { id = id, name = (node and (node.dn or node.name)) or tostring(id), allocated = spec.allocNodes[id] and true or false }
+  end
+  if spec.allocNodes[target] then return { ok = true, cost = 0, path = { info(target) } } end
+
+  local cost, parent, seen = {}, {}, {}
+  local cur, nxt, spent = {}, {}, 0
+  for id in pairs(spec.allocNodes or {}) do seen[id] = true; cost[id] = 0; cur[#cur + 1] = id end
+  while #cur > 0 and not seen[target] do
+    local nextCur = {}
+    for _, id in ipairs(cur) do
+      local node = tree.nodes[id] or tree.nodes[tostring(id)]
+      for _, c in ipairs((node and node.connections) or {}) do
+        local other = tonumber(c.id)
+        if other and not seen[other] then
+          seen[other] = true
+          parent[other] = id
+          if spec.allocNodes[other] then cost[other] = spent; nextCur[#nextCur + 1] = other
+          else cost[other] = spent + 1; nxt[#nxt + 1] = other end
+        end
+      end
+    end
+    if #nextCur > 0 then cur = nextCur
+    else
+      cur = nxt; nxt = {}; spent = spent + 1
+    end
+  end
+  if not seen[target] then return { ok = true, cost = nil, path = {} } end
+  local path = {}
+  local at = target
+  while at ~= nil do
+    table.insert(path, 1, info(at))
+    at = parent[at]
+  end
+  return { ok = true, cost = cost[target], path = path }
 end
 
 -- The build as Path of Building itself would export it: the same tables its Save
@@ -1426,6 +1476,8 @@ while true do
       return saveXml()
     elseif req.cmd == "nodes" then
       return searchNodes(req)
+    elseif req.cmd == "nodepath" then
+      return nodePath(req)
     elseif req.cmd == "tiers" then
       return affixTiers(req)
     elseif req.cmd == "setskill" then

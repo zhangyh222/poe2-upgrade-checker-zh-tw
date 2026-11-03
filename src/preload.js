@@ -85,6 +85,8 @@ contextBridge.exposeInMainWorld('api', {
   pobTree: () => ipcRenderer.invoke('pob:tree'),
   // passive search with path cost: { nodes: [{id, name, cost, allocated, weaponSet, stats}] }
   searchNodes: (query, limit) => ipcRenderer.invoke('nodes:search', query, limit),
+  // the walk (node ids in order) from anything allocated to one node
+  nodePath: (id) => ipcRenderer.invoke('nodes:path', id),
   // where a character-sheet stat comes from (hover / click on the Character page)
   pobSources: (stat) => ipcRenderer.invoke('pob:sources', stat),
   // clicking a stat opens its own always-on-top window; clicking again closes it
