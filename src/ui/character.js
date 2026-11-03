@@ -32,6 +32,8 @@
   let lastEvidence = null; // the engine's answer for the draft revision shown
   let draftBusy = false;
   let draftError = '';
+  let trialRunning = false;
+  let trialOp = null;
   async function render(refresh) {
     if (busy) { again = again || !!refresh; return; }
     busy = true;
@@ -144,7 +146,9 @@
       + `<div class="row draft-sets">${sets}</div>`
       + (ev ? evidenceHtml(ev) : `<div class="dim small">${t('Calculate the draft before adopting it.')}</div>`)
       + draftSkillBox(skills, d)
-      + `<div class="row"><button type="button" class="link" data-draft="trial">${t('Calculate the draft')}</button>`
+      + `<div class="row">${trialRunning
+        ? `<button type="button" class="link" data-draft="canceltrial">${t('Cancel calculating')}</button>`
+        : `<button type="button" class="link" data-draft="trial">${t('Calculate the draft')}</button>`}`
       + `<button type="button" class="link${canAdopt ? ' primary' : ''}" data-draft="adopt"${canAdopt ? '' : ' disabled'}>${t('Adopt')}</button>`
       + `<button type="button" class="link" data-draft="discard">${t('Discard')}</button></div>`
       + (draftError ? `<div class="neg small">${esc(draftError)}</div>` : ''));
@@ -483,10 +487,16 @@
   // and the main process refuses a stale or unverified draft.
   document.addEventListener('click', async (ev) => {
     const el = ev.target.closest ? ev.target.closest('[data-draft]') : null;
-    if (!el || draftBusy) return;
-    ev.stopPropagation();
-    draftBusy = true; draftError = '';
+    if (!el) return;
     const action = el.dataset.draft;
+    // cancelling is the one action that has to work while a calculation runs
+    if (draftBusy && action !== 'canceltrial') return;
+    ev.stopPropagation();
+    if (action === 'canceltrial') {
+      if (trialOp) await window.api.cancelWork(trialOp);
+      return; // the running trial reports back and re-renders
+    }
+    draftBusy = true; draftError = '';
     try {
       let r = { ok: true };
       if (action === 'start') r = await window.api.draftStart();
@@ -499,8 +509,13 @@
         else { r = await window.api.draftSkillSet(id, next.set1, next.set2); lastEvidence = null; }
       }
       else if (action === 'trial') {
-        r = await window.api.draftTrial();
+        trialOp = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now());
+        trialRunning = true;
+        render(false); // swap the button for "cancel" while it runs
+        r = await window.api.draftTrial(trialOp);
+        trialRunning = false; trialOp = null;
         if (r.ok) lastEvidence = { draftId: r.draft.id, revision: r.draft.revision, evidence: r.evidence };
+        else if (r.code === 'CANCELLED') draftError = t('The calculation was cancelled.');
       } else if (action === 'adopt') { r = await window.api.draftAdopt(); lastEvidence = null; }
       else if (action === 'discard') { r = await window.api.draftDiscard(); lastEvidence = null; }
       if (r && !r.ok) draftError = displayError(r.error || r.reason || r.code);

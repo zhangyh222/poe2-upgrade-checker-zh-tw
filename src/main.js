@@ -169,6 +169,9 @@ function pobSync() {
 // instead of being overwritten by it.
 const { createBuildRepository } = require('./core/build-repository');
 const { createBuildDrafts } = require('./core/build-drafts');
+const { createPendingWork } = require('./core/pending-work');
+// work the user may cancel while it runs (a draft trial is long enough to matter)
+const pendingWork = createPendingWork();
 let buildRepoHandle = null;
 function buildRepo() {
   if (!buildRepoHandle) buildRepoHandle = createBuildRepository(path.join(app.getPath('userData'), 'builds'));
@@ -1028,7 +1031,10 @@ ipcMain.handle('drafts:skillSet', async (_e, id, set1, set2) => {
     return { ok: true, draft: updated, skill: result.skill || null };
   } catch (err) { return draftReply(err); }
 });
-ipcMain.handle('drafts:trial', async () => {
+ipcMain.handle('drafts:trial', async (_e, opId) => {
+  // Lua cannot be interrupted mid-calculation, so cancelling stops the engine;
+  // the next request reloads the build from its document.
+  const work = opId ? pendingWork.begin(String(opId), () => { log('draft: trial cancelled by the user'); pobEngine().stop(); }) : null;
   try {
     const draftId = activeDraftId();
     if (!draftId) return { ok: false, code: 'DRAFT_NOT_FOUND', error: { key: DRAFT_ERRORS.DRAFT_NOT_FOUND, args: [] } };
@@ -1036,10 +1042,20 @@ ipcMain.handle('drafts:trial', async () => {
     // made while the draft was open shows up as a stale draft, not a silent win
     await syncBuildDocument();
     const result = await draftService().trial(draftId);
+    // a cancelled trial may still come back as "unverified": report the cancel
+    if (opId && pendingWork.wasCancelled(String(opId))) {
+      return { ok: false, code: 'CANCELLED', error: { key: 'The calculation was cancelled.', args: [] } };
+    }
     log(`draft: trial ${draftId} -> ${result.evidence.status}`);
     return { ok: true, evidence: result.evidence, baseRevision: result.baseRevision, draft: result.draft };
-  } catch (err) { return draftReply(err); }
+  } catch (err) {
+    if (err && err.code === 'CANCELLED') return { ok: false, code: 'CANCELLED', error: { key: 'The calculation was cancelled.', args: [] } };
+    return draftReply(err);
+  } finally {
+    if (work) work.finish();
+  }
 });
+ipcMain.handle('work:cancel', (_e, opId) => ({ ok: pendingWork.cancel(String(opId || '')) }));
 ipcMain.handle('drafts:adopt', async () => {
   try {
     const draftId = activeDraftId();

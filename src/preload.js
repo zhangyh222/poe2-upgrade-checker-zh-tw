@@ -57,7 +57,8 @@ contextBridge.exposeInMainWorld('api', {
   draftStart: () => ipcRenderer.invoke('drafts:start'),
   draftWeaponSet: (n) => ipcRenderer.invoke('drafts:weaponSet', n),
   draftSkillSet: (id, set1, set2) => ipcRenderer.invoke('drafts:skillSet', id, set1, set2),
-  draftTrial: () => ipcRenderer.invoke('drafts:trial'),
+  draftTrial: (opId) => ipcRenderer.invoke('drafts:trial', opId),
+  cancelWork: (opId) => ipcRenderer.invoke('work:cancel', opId),
   draftAdopt: () => ipcRenderer.invoke('drafts:adopt'),
   draftDiscard: () => ipcRenderer.invoke('drafts:discard'),
   // the whole allocated passive tree, for the Passives page
