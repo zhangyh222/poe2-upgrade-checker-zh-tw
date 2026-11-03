@@ -57,6 +57,8 @@ contextBridge.exposeInMainWorld('api', {
   draftStart: () => ipcRenderer.invoke('drafts:start'),
   draftWeaponSet: (n) => ipcRenderer.invoke('drafts:weaponSet', n),
   draftSkillSet: (id, set1, set2) => ipcRenderer.invoke('drafts:skillSet', id, set1, set2),
+  // which affix tier each equipped item's lines come from (T1 = best)
+  tiersEquipped: () => ipcRenderer.invoke('tiers:equipped'),
   // "must still be true after the swap" conditions: global, slot (weapon slots
   // also carry a weapon set) and the temporary layer the caller passes in
   guardsGet: (slotName) => ipcRenderer.invoke('guards:get', slotName),

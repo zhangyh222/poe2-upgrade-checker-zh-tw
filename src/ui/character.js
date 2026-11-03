@@ -35,21 +35,24 @@
   let trialRunning = false;
   let trialOp = null;
   let lastPlans = null; // saved plans + previous versions from the repository
+  let lastTiers = null; // { slot: [{ text, tier, group, confidence }] }
   async function render(refresh) {
     if (busy) { again = again || !!refresh; return; }
     busy = true;
     const body = $('#charBody');
     try {
-      const [st, d, drafts, planState] = await Promise.all([
+      const [st, d, drafts, planState, tiers] = await Promise.all([
         window.api.getState(),
         window.api.pobSheet(!!refresh),
         window.api.draftState().catch(() => null),
         window.api.plansList().catch(() => null),
+        window.api.tiersEquipped().catch(() => null),
       ]);
       const prof = (st.profiles || []).find((p) => p.active);
       lastState = st;
       lastDrafts = drafts && drafts.ok ? drafts : null;
       lastPlans = planState && planState.ok ? planState : null;
+      lastTiers = tiers && tiers.ok ? tiers.tiers : null;
       // The page heading stays generic ("Character"); the active character's name is in the sidebar
       // selector. Putting the profile name here looked like a build-type label (e.g. "法系") on an
       // attack build, which confused players.
@@ -337,7 +340,11 @@
       const it = (st.equipped || {})[slot]; const pobName = (s.gear || {})[POB_SLOT[slot] || slot];
       const name = it ? it.name : pobName; if (!name) return '';
       const g = gs[slot];
-      return row(t(slot), `${esc(gn(name))}${over.has(POB_SLOT[slot] || slot) ? ` <small>${t('copied in game')}</small>` : it && it.fromPob ? ` <small>${t('from PoB')}</small>` : ''}${g && g.score != null ? ` <span class="gs g-${esc(g.grade)}">${g.score} ${esc(g.grade)}</span>` : ''}`);
+      // which affix tiers this item's lines are (T1 = best); unknown lines simply
+      // do not appear, so a short list means "not resolved", not "no mods"
+      const hits = (lastTiers && lastTiers[slot]) || [];
+      const chips = hits.slice(0, 8).map((h) => `<span class="tier${h.confidence === 'range-only' ? ' dim' : ''}" title="${esc(`${h.text} · ${h.group}`)}">T${h.tier}</span>`).join('');
+      return row(t(slot), `${esc(gn(name))}${over.has(POB_SLOT[slot] || slot) ? ` <small>${t('copied in game')}</small>` : it && it.fromPob ? ` <small>${t('from PoB')}</small>` : ''}${g && g.score != null ? ` <span class="gs g-${esc(g.grade)}">${g.score} ${esc(g.grade)}</span>` : ''}${chips ? `<div class="tiers">${chips}</div>` : ''}`);
     })) + (s.sockets && s.sockets.length ? `<h4 class="small">${t('Jewel sockets on your tree')}</h4>${table(s.sockets.map((j) => row(/^Socket #(\d+)$/.test(j.label) ? t('Socket #{0}', j.label.slice(8)) : j.label,
       j.jewel
         ? `${esc(gn(j.jewel))}${j.baseType && j.baseType !== j.jewel ? ` <small class="dim">${esc(gn(j.baseType))}</small>` : ''}${(j.mods || []).length ? `<div class="dim small jewel-mods">${j.mods.map((m) => esc(gdText(m))).join(' · ')}</div>` : ''}`

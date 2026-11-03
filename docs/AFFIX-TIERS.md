@@ -45,6 +45,16 @@ Strength: T1 lvl81 +(34-36) | T2 lvl74 +(31-33) | … | T9 lvl1 +(5-8)
 IncreasedLife: T1 lvl80 +(200-214) | T2 lvl75 +(190-199) | T3 lvl70 +(175-189) | T4 lvl65 +(150-174)
 ```
 
+## 界面：装备行上的 Tier 标签（2026-11-03 追加）
+
+角色页的「装备」卡里，每件已装备物品下面会列出它的词缀档位（`T1`…），悬停显示该行原文与所属组。
+
+匹配方式（`src/core/affix-match.js`）：把数字统一成 `#` 比"形状"，再用实际数值落进哪一档决定 Tier——同一形状可能对应多档（例如 `+#% to Fire Resistance` 有两档），值落在哪一段就是哪一档；落在所有段外标为 `range-only`（灰色，表示"这不是那个档位"），形状完全认不出就不显示。
+
+实测（导入 ranger-deadeye 后）：装备卡出现 26 个标签，如 `T1 Adds 1 to 109 Lightning Damage`、`T1 29% increased Attack Speed`、`T5 56% increased chance to Shock`、`T1 121% increased Evasion and Energy Shield`。
+
+**覆盖率**：三份构筑的 523 行物品文本里 157 行（30%）能对上 Item 词缀池。其余主要是：装备属性行（`Armour: …`、`Item Level: …`）、符文/附魔（在 `ModRunes` 池）、唯一物品专属文本（在 `ModItemExclusive` 池）。要全覆盖需要把这几类池也接进来，目前只做了 Item。
+
 ## 尚未完成
 
 - UI：词缀面板与 Tier 拖动条（数据与比较函数已就绪）。

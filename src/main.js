@@ -1403,6 +1403,41 @@ ipcMain.handle('pob:sheet', async (_e, refresh) => {
 // The passive tree for the Passives page (positions, links, names, stats). Big but read once
 // per character and calculation, so the page can redraw while zooming without asking PoB again.
 const pobLastTree = new Map();
+// ---------- affix tiers ----------
+// The engine's mod pool is big (~600 KB for items), so it is loaded once per
+// session and kept in memory; matching an item line is then pure string work.
+let tierMatcher = null;
+async function ensureTierMatcher() {
+  if (tierMatcher) return tierMatcher;
+  const r = await pobEngine().affixTiers('Item');
+  if (!r || !r.ok) throw new Error((r && r.error) || 'the modifier pool could not be read');
+  const { createMatcher } = require('./core/affix-match');
+  tierMatcher = createMatcher(r.groups);
+  log(`affix tiers: ${r.count} groups loaded`);
+  return tierMatcher;
+}
+ipcMain.handle('tiers:equipped', async () => {
+  try {
+    const matcher = await ensureTierMatcher();
+    const out = {};
+    for (const [slot, item] of Object.entries(store.equipped || {})) {
+      if (!item || !Array.isArray(item.lines)) continue;
+      const hits = [];
+      for (const line of item.lines) {
+        const text = line && line.text;
+        if (!text) continue;
+        const m = matcher.match(text);
+        if (m) hits.push({ text, group: m.group, type: m.type, tier: m.tier, confidence: m.confidence, position: m.position });
+      }
+      if (hits.length) out[slot] = hits;
+    }
+    return { ok: true, tiers: out };
+  } catch (err) {
+    log('tiers: ' + (err.message || err));
+    return { ok: false, error: { key: 'Path of Building could not read the modifier pool: {0}', args: [err.message || String(err)] } };
+  }
+});
+
 // passive node search with the points each match costs from what is allocated
 ipcMain.handle('nodes:search', async (_e, query, limit) => {
   try {
