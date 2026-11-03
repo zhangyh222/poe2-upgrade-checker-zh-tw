@@ -44,5 +44,13 @@ function gate() { let resolve; const promise = new Promise((r) => { resolve = r;
   engine.setBuild(xml.replace('level="90"', 'level="91"'), []);
   unblock.resolve(); await Promise.all([activeCheck, queuedCheck]); assert.equal(executed, false);
   assert.equal((await engine.ensureLoaded()).level, 91);
+  // A's temporary alignment must not override B's explicit view preference.
+  await engine.setWeaponSet(1);
+  engine.setBuild(xml, [], 2);
+  assert.equal((await engine.sheet()).weaponSwap, true);
+  engine.setBuild(xml, [], 0);
+  assert.equal(engine.weaponSet(), 0);
+  await engine.sheet();
+  assert.equal(engine.weaponSet(), 0);
   console.log('Transaction regressions passed: exclusive lease, partial-failure recovery, cancellation restoration, obsolete queued work.');
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => engine.kill());

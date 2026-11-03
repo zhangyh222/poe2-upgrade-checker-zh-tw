@@ -6,6 +6,26 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { createCalculationContext } = require('../src/core/calculation-context');
 const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
+test('delayed pobb.in import cannot write XML or equipment into a different character', async () => {
+  const pause = deferred(), handlers = {}, identity = { profileId: 'A', revision: 1 };
+  let writes = 0;
+  const sandbox = {
+    ipcMain: { handle: (name, fn) => { handlers[name] = fn; } },
+    store: { data: { activeProfile: 'A' }, equipped: {}, settings: {}, setEquipped: () => { writes++; }, noteStats: () => {}, setSetting: () => { writes++; } },
+    pobContext: createCalculationContext(() => identity),
+    net: { fetch: () => pause.promise }, UA: 'test',
+    pobLib: { pobbinRawUrl: () => 'https://pobb.in/test/raw', decodeCode: () => 'xml', parsePob: () => ({ items: { Gloves: 'item' } }) },
+    parseItem: () => ({ name: 'gloves' }), log: () => {},
+    fs: { mkdirSync: () => { writes++; }, writeFileSync: () => { writes++; } },
+  };
+  vm.createContext(sandbox);
+  const start = main.indexOf("ipcMain.handle('pob:import'"), end = main.indexOf('// what the engine says', start);
+  vm.runInContext(main.slice(start, end), sandbox);
+  const result = handlers['pob:import'](null, 'https://pobb.in/test');
+  identity.profileId = 'B'; identity.revision++; sandbox.store.data.activeProfile = 'B';
+  pause.resolve({ ok: true, text: async () => 'code' });
+  const r = await result; assert.equal(r.stale, true); assert.equal(writes, 0);
+});
 function deferred() { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; }
 
 test('late calculations are rejected after character or generation changes, including away and back', async () => {

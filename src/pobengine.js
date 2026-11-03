@@ -168,7 +168,11 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     return p;
   }
   // remember a build without starting the engine yet (it loads on first use)
-  function setBuild(xml, over) { if (xml !== buildXml) failedAt = 0; buildXml = xml; overrides = over || []; buildInfo = null; gen++; }
+  function setBuild(xml, over, desiredWeaponSet) {
+    if (xml !== buildXml) failedAt = 0;
+    if (desiredWeaponSet !== undefined) weaponSet = desiredWeaponSet === 2 ? 2 : desiredWeaponSet === 1 ? 1 : 0;
+    buildXml = xml; overrides = over || []; buildInfo = null; gen++;
+  }
   function kill() { if (proc) { try { proc.kill(); } catch (_) {} } }
 
   async function evalItems(items) {

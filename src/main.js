@@ -157,7 +157,7 @@ const pobContext = createCalculationContext(() => ({
 }));
 function pobSync() {
   pobQueries.clear(); pobSheetGen++;
-  if (pobOn()) pobEngine().setBuild(pobXml(), pobOverrides());
+  if (pobOn()) pobEngine().setBuild(pobXml(), pobOverrides(), store.settings.weaponSet || 0);
   // open source panels recalculate their numbers too
   for (const win of statPanels.values()) { try { if (!win.isDestroyed()) win.webContents.send('sources:refresh'); } catch (_) { /* ignore */ } }
 }
@@ -937,6 +937,8 @@ ipcMain.handle('resists:set', (_e, r) => {
 // ---------- Path of Building import ----------
 const pobLib = require('./core/pob');
 ipcMain.handle('pob:import', async (_e, input) => {
+  const profileId = store.data.activeProfile;
+  let context = pobContext.capture({ kind: 'import', profileId });
   try {
     let code = String(input || '').trim();
     if (!code) return { ok: false, error: { key: 'Paste a PoB code or a pobb.in link first.' } };
@@ -950,6 +952,9 @@ ipcMain.handle('pob:import', async (_e, input) => {
     }
     const xml = pobLib.decodeCode(code);
     const r = pobLib.parsePob(xml);
+    // Fetching a link can outlive a character switch. Never apply its contents
+    // to whichever character happens to be active when the network returns.
+    pobContext.assertCurrent(context);
     const slots = Object.keys(r.items);
     if (!slots.length) return { ok: false, error: { key: 'No equipped items found in that build.' } };
     let kept = 0;
@@ -967,8 +972,9 @@ ipcMain.handle('pob:import', async (_e, input) => {
     const typed = store.settings.resists && store.settings.resists.source === 'game';
     if (r.resists && !typed) store.setSetting('resists', resLib.snapshot({ ...r.resists, cap: (store.settings.resists && store.settings.resists.cap) || 75 }, store.equipped, 'pob', store.settings.resists));
     // keep the build itself for the Path of Building engine
-    try { fs.mkdirSync(path.dirname(pobFile()), { recursive: true }); fs.writeFileSync(pobFile(), xml); } catch (err) { log('pob: could not save the build: ' + err.message); }
+    try { fs.mkdirSync(path.dirname(pobFile(profileId)), { recursive: true }); fs.writeFileSync(pobFile(profileId), xml); } catch (err) { log('pob: could not save the build: ' + err.message); }
     pobSync();
+    context = pobContext.capture({ kind: 'import-loaded', profileId });
     refreshAll();
     const who = r.character.ascendancy || r.character.className;
     const message = [
@@ -983,8 +989,15 @@ ipcMain.handle('pob:import', async (_e, input) => {
     let engine = null;
     if (pobOn()) {
       try {
-        const info = await pobEngine().ensureLoaded();
-        engine = pobSummary(info);
+        const loaded = await pobContext.run(context, () => pobEngine().transaction(async (session) => {
+          const info = await session.ensureLoaded();
+          let sheet = null;
+          if (!store.settings.buildPicked) {
+            try { sheet = await session.sheet(); } catch (err) { pobContext.assertCurrent(context); log('pob import sheet: ' + err.message); }
+          }
+          return { info, sheet };
+        }));
+        engine = pobSummary(loaded.info);
         // the gear score (used when PoB can't judge something) gets a profile that fits this build
         if (!store.settings.buildPicked && engine) {
           // The "spellcaster" profile weights spell skill levels and spell/elemental damage, so it
@@ -992,7 +1005,7 @@ ipcMain.handle('pob:import', async (_e, input) => {
           // for one): decide by the main skill's own attack tag, not by Energy Shield vs Life alone.
           let isAttack = false;
           try {
-            const sheet = await pobEngine().sheet();
+            const sheet = loaded.sheet;
             const mainGroup = sheet && Array.isArray(sheet.skills) ? sheet.skills.find((s) => s.main) : null;
             isAttack = !!(mainGroup && Array.isArray(mainGroup.gems) && mainGroup.gems.some((g) => g.attack && !g.support));
           } catch (_) { /* no sheet this time: fall back to the life/ES heuristic below */ }
@@ -1003,10 +1016,11 @@ ipcMain.handle('pob:import', async (_e, input) => {
           if (fit !== store.settings.build) { store.setSetting('build', fit); log(`gear score profile set to ${fit} from the PoB build`); }
         }
         if (engine.mismatch.length) message.push(...engine.mismatch);
-      } catch (err) { engine = { ok: false, error: { key: 'Path of Building could not check this build: {0}', args: [err.message || String(err)] } }; log('pob: ' + err.message); }
+      } catch (err) { pobContext.assertCurrent(context); engine = { ok: false, error: { key: 'Path of Building could not check this build: {0}', args: [err.message || String(err)] } }; log('pob: ' + err.message); }
     }
     return { ok: true, message, slots, engine };
   } catch (err) {
+    if (err.code === 'STALE_CALCULATION') return { ok: false, stale: true, error: { key: 'Your character or build changed. Check the item again.' } };
     log('pob import failed: ' + (err.stack || err));
     return { ok: false, error: { key: 'Path of Building import failed: {0}', args: [err.message || String(err)] } };
   }
