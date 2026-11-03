@@ -114,7 +114,17 @@
       + (e.reason ? `<div class="dim small">${esc(e.reason)}</div>` : '')
       + '</div>';
   }
-  function draftCard(drafts) {
+  function draftSkillBox(skills, d) {
+    const list = (skills || []).filter((k) => k.set1 !== undefined || k.set2 !== undefined);
+    if (!list.length) return '';
+    const chip = (k, n) => {
+      const on = n === 1 ? k.set1 : k.set2;
+      return `<button type="button" class="link${on ? ' on' : ''}" data-draft="skill" data-id="${k.id}" data-which="${n}" data-s1="${k.set1 ? 1 : 0}" data-s2="${k.set2 ? 1 : 0}"${k.locked ? ` disabled title="${esc(t('This skill sits in a weapon slot; its set comes from the weapon.'))}"` : ''}>${esc(t('Weapon set {0}', n))}</button>`;
+    };
+    const rows = list.slice(0, 20).map((k) => `<div class="draft-skill${k.locked ? ' locked' : ''}"><span class="grow">${esc(gn(k.label || ''))}</span>${chip(k, 1)}${chip(k, 2)}</div>`).join('');
+    return `<details class="draft-skills"><summary>${esc(t('Skill weapon sets ({0})', list.length))}</summary>${rows}</details>`;
+  }
+  function draftCard(drafts, skills) {
     if (!drafts) return '';
     const cur = drafts.current; const d = drafts.draft;
     const head = `<div class="row"><b>${esc(cur ? t('Build version {0}', cur.revision) : t('No build version yet'))}</b>`
@@ -133,6 +143,7 @@
       + `<div class="dim small">${t('Draft revision {0}, based on build version {1}.', d.revision, d.baseRevision)}</div>`
       + `<div class="row draft-sets">${sets}</div>`
       + (ev ? evidenceHtml(ev) : `<div class="dim small">${t('Calculate the draft before adopting it.')}</div>`)
+      + draftSkillBox(skills, d)
       + `<div class="row"><button type="button" class="link" data-draft="trial">${t('Calculate the draft')}</button>`
       + `<button type="button" class="link${canAdopt ? ' primary' : ''}" data-draft="adopt"${canAdopt ? '' : ' disabled'}>${t('Adopt')}</button>`
       + `<button type="button" class="link" data-draft="discard">${t('Discard')}</button></div>`
@@ -309,7 +320,7 @@
     // three groups of related cards, each stacked without gaps: what you deal, what you survive,
     // what you wear and how you're built
     const stack = (cls, title, parts) => { const inner = parts.filter(Boolean).join(''); return inner ? `<section class="char-stack ${cls}"><h4 class="char-group">${esc(title)}</h4>${inner}</section>` : ''; };
-    return `${hero}<div class="char-cols">${stack('s-off', t('Offence'), [minionCard, offence, skills])}${stack('s-def', t('Defence'), [defence, res, maxHit, resources])}${stack('s-build', t('Gear & build'), [draftCard(drafts), gear, misc])}</div>`;
+    return `${hero}<div class="char-cols">${stack('s-off', t('Offence'), [minionCard, offence, skills])}${stack('s-def', t('Defence'), [defence, res, maxHit, resources])}${stack('s-build', t('Gear & build'), [draftCard(drafts, s.skills), gear, misc])}</div>`;
   }
 
   function noPobHtml(d, st) {
@@ -480,6 +491,13 @@
       let r = { ok: true };
       if (action === 'start') r = await window.api.draftStart();
       else if (action === 'set') { r = await window.api.draftWeaponSet(Number(el.dataset.set)); lastEvidence = null; }
+      else if (action === 'skill') {
+        const id = Number(el.dataset.id); const which = Number(el.dataset.which);
+        const s1 = el.dataset.s1 === '1'; const s2 = el.dataset.s2 === '1';
+        const next = which === 1 ? { set1: !s1, set2: s2 } : { set1: s1, set2: !s2 };
+        if (!next.set1 && !next.set2) draftError = t('A skill has to stay usable in at least one weapon set.');
+        else { r = await window.api.draftSkillSet(id, next.set1, next.set2); lastEvidence = null; }
+      }
       else if (action === 'trial') {
         r = await window.api.draftTrial();
         if (r.ok) lastEvidence = { draftId: r.draft.id, revision: r.draft.revision, evidence: r.evidence };

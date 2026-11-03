@@ -1246,6 +1246,9 @@
     "This draft is already closed.": "這份草稿已結束。",
     "That draft no longer exists.": "這份草稿已不存在。",
     "The engine could not put your build back after the trial, so it was stopped.": "試算後引擎無法還原你的構築，已停止引擎。",
+    "Skill weapon sets ({0})": "技能武器組（{0}）",
+    "This skill sits in a weapon slot; its set comes from the weapon.": "這個技能鑲在武器槽裡，組別由該武器決定。",
+    "A skill has to stay usable in at least one weapon set.": "技能至少要能在一個武器組中使用。",
   };
 
   // 简体中文界面文案；键与繁体词典保持一致，游戏复制文本及属性数据库内容不在此转换。
@@ -2653,6 +2656,9 @@
     "This draft is already closed.": "这份草稿已结束。",
     "That draft no longer exists.": "这份草稿已不存在。",
     "The engine could not put your build back after the trial, so it was stopped.": "试算后引擎无法还原你的构筑，已停止引擎。",
+    "Skill weapon sets ({0})": "技能武器组（{0}）",
+    "This skill sits in a weapon slot; its set comes from the weapon.": "这个技能镶在武器槽里，组别由该武器决定。",
+    "A skill has to stay usable in at least one weapon set.": "技能至少要能在一个武器组中使用。",
   };
 
   const DICTS = { "zh-TW": zh, "zh-CN": zhCN };

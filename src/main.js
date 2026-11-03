@@ -1014,6 +1014,20 @@ ipcMain.handle('drafts:weaponSet', async (_e, n) => {
     return { ok: true, draft: updated };
   } catch (err) { return draftReply(err); }
 });
+ipcMain.handle('drafts:skillSet', async (_e, id, set1, set2) => {
+  try {
+    const draftId = activeDraftId();
+    if (!draftId) return { ok: false, code: 'DRAFT_NOT_FOUND', error: { key: DRAFT_ERRORS.DRAFT_NOT_FOUND, args: [] } };
+    const draft = await buildRepo().getDraft(draftId);
+    if (!draft || draft.status !== 'editing') return { ok: false, code: 'DRAFT_CLOSED', error: { key: DRAFT_ERRORS.DRAFT_CLOSED, args: [] } };
+    // the engine changes the skill on a copy and hands back the build as XML;
+    // the build the page is showing is restored inside that call
+    const result = await pobEngine().editDocument(draft.document, [{ op: 'skillSet', id: Number(id), set1: !!set1, set2: !!set2 }]);
+    const updated = await buildRepo().updateDraft(draft.id, draft.revision, { ...draft.document, xml: result.xml });
+    log(`draft: skill ${id} -> sets ${set1 ? 1 : 0}${set2 ? 1 : 0}`);
+    return { ok: true, draft: updated, skill: result.skill || null };
+  } catch (err) { return draftReply(err); }
+});
 ipcMain.handle('drafts:trial', async () => {
   try {
     const draftId = activeDraftId();

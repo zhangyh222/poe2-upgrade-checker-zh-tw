@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('api', {
   draftState: () => ipcRenderer.invoke('drafts:state'),
   draftStart: () => ipcRenderer.invoke('drafts:start'),
   draftWeaponSet: (n) => ipcRenderer.invoke('drafts:weaponSet', n),
+  draftSkillSet: (id, set1, set2) => ipcRenderer.invoke('drafts:skillSet', id, set1, set2),
   draftTrial: () => ipcRenderer.invoke('drafts:trial'),
   draftAdopt: () => ipcRenderer.invoke('drafts:adopt'),
   draftDiscard: () => ipcRenderer.invoke('drafts:discard'),

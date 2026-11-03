@@ -49,6 +49,16 @@ $env:POB_REF='v0.23.1'; node tools/get-pob.js --force
 
 `vendor/pob-v0231-backup/` 是升级前的完整副本（含 runtime），需要立刻回滚时可直接改回 `.pob-version` 并替换目录。
 
+## 导出与改技能组（2026-11-03 追加）
+
+- `savexml`：用 PoB 自己的 `build:SaveDB()`（"另存为"走的就是它）导出整份构筑，包含 Build 段与各标签页。载荷字段不能叫 `id`——请求信封用 `id` 做应答关联，会被覆盖；`setskill` 的参数因此叫 `group`。
+- `setskill {group, set1, set2}`：改某个技能组的原生武器组，然后返回新的构筑 XML。
+  - **由武器槽决定的技能是锁定的**（`IsSocketGroupWeaponSetLocked`），改不了，服务端直接拒绝并说明原因；
+  - 不允许两组都关（技能至少要能在一组里用）。
+- `engine.editDocument(doc, edits)`：在一个事务里载入指定文档、应用编辑、导出 XML，然后把页面正在用的构筑**恢复原状**（与试算同一套恢复逻辑）。
+- 真机验证（`tesdbd.txt.txt`，21 个技能组，5 个锁定）：把 "Called Shots, Sniper's Mark" 从 1+2 改成仅 1，导出→重载后仍是 `true/false`；锁定技能改被拒绝；编辑结束后当前构筑数值与编辑前一致。
+- 回归工具：`POB_BUILD=<导出码文件> node tools/pob-savexml.js`（导出往返数值一致；不带变量时跳过）。
+
 ## 已知限制
 
 - 固定的是 **dev 提交**，不是发布版：后续升级要重新跑上表全部回归，不能只看 smoke。

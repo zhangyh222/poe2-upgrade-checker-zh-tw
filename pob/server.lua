@@ -337,6 +337,11 @@ local function sheet()
           key = table.concat(#activeGems > 0 and activeGems or keyGems, "|"),
           weaponSet = wset, inActiveSet = (not wset) or wset == activeSet,
           set1 = native1, set2 = native2,
+          -- locked: the sets come from the weapon slot the skill is socketed in
+          locked = (function()
+            local ok, v = pcall(function() return build.skillsTab:IsSocketGroupWeaponSetLocked(g) end)
+            return ok and v or false
+          end)(),
         }
       end
     end
@@ -1192,6 +1197,52 @@ local function useWeaponSet(n)
   return r
 end
 
+-- The build as Path of Building itself would export it: the same tables its Save
+-- methods fill, composed by its own XML writer. This is what makes an edit (e.g. a
+-- skill's weapon sets) survive as a build again, instead of living only in memory.
+local function saveXml()
+  -- SaveDB is what "Save as" uses: it writes the Build section plus every tab
+  -- (items, skills, tree, config, calcs) through each tab's own Save. The file
+  -- name is only used for its error message, which this bridge replaces.
+  local ok, text = pcall(function() return build:SaveDB("build.xml") end)
+  if not ok then return { ok = false, error = "Path of Building could not save the build: " .. tostring(text) } end
+  if type(text) ~= "string" or text == "" then return { ok = false, error = "Path of Building returned no build XML." } end
+  return { ok = true, xml = text }
+end
+
+-- Change which weapon sets a skill belongs to, then hand back the build as XML.
+-- A skill has to stay usable in at least one set: "neither" is not a state Path of
+-- Building can calculate.
+local function setSkillWeaponSet(req)
+  -- "group", not "id": the request envelope uses id for the reply correlation
+  local id = tonumber(req.group)
+  local groups = (build.skillsTab and build.skillsTab.socketGroupList) or {}
+  local g = id and groups[id]
+  if not g then return { ok = false, error = "no such skill" } end
+  -- a skill that comes from an item (or the default attack) belongs to the weapon
+  -- slot it sits in: its set comes from the slot and cannot be chosen here
+  local locked = build.skillsTab.IsSocketGroupWeaponSetLocked and build.skillsTab:IsSocketGroupWeaponSetLocked(g) or false
+  if locked then
+    return { ok = false, locked = true, error = "this skill's weapon set comes from the weapon slot it is socketed in" }
+  end
+  local set1, set2 = req.set1 == true, req.set2 == true
+  if not set1 and not set2 then return { ok = false, error = "a skill has to be usable in at least one weapon set" } end
+  local found = { id = id, label = g.displayLabel or g.label, set1 = g.set1 == true, set2 = g.set2 == true }
+  if found.set1 == set1 and found.set2 == set2 then
+    local same = saveXml()
+    same.unchanged = true
+    same.found = found
+    return same
+  end
+  g.set1, g.set2 = set1, set2
+  build.buildFlag = true
+  build.calcsTab:BuildOutput()
+  local r = saveXml()
+  r.ok = r.ok ~= false
+  r.skill = { id = id, label = g.displayLabel or g.label, set1 = set1, set2 = set2 }
+  return r
+end
+
 reply(enc({ ready = true, version = launch and launch.versionNumber or nil }))
 
 while true do
@@ -1238,6 +1289,10 @@ while true do
       return weaponProbe(req)
     elseif req.cmd == "sheet" then
       return sheet()
+    elseif req.cmd == "savexml" then
+      return saveXml()
+    elseif req.cmd == "setskill" then
+      return setSkillWeaponSet(req)
     elseif req.cmd == "quit" then
       os.exit(0)
     end

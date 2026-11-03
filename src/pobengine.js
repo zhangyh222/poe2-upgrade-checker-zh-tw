@@ -298,6 +298,52 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     }, options);
   }
 
+  // Edit a build document with the engine's own tools and hand the result back as
+  // XML. Edits are [{ op: 'skillSet', id, set1, set2 }]. The active build is put
+  // back afterwards exactly like a trial, because the edit happens on a copy that
+  // only exists for this run.
+  async function editDocument(doc, edits, options = {}) {
+    if (!doc || typeof doc.xml !== 'string') throw new Error('A build document is required.');
+    if (!Array.isArray(edits) || !edits.length) throw new Error('No edits to apply.');
+    return operations.run(async () => {
+      const before = {
+        xml: buildXml, overrides: overrides.slice(), weaponSet,
+        effectiveSet: weaponSet || (buildInfo && buildInfo.weaponSwap ? 2 : 1),
+      };
+      let result;
+      try {
+        setBuild(doc.xml, doc.overrides || []);
+        await ensureLoaded();
+        const wanted = doc.weaponSet === 2 ? 2 : 1;
+        const switched = await setWeaponSet(wanted);
+        if (!switched || !switched.ok) throw new Error(switched && switched.error ? switched.error : 'Path of Building could not switch the weapon set.');
+        let xml = null;
+        for (const edit of edits) {
+          if (options.signal && options.signal.aborted) { const e = new Error('Calculation cancelled.'); e.name = 'AbortError'; throw e; }
+          if (edit.op !== 'skillSet') throw new Error('Unknown build edit: ' + edit.op);
+          // "group": the envelope's own id carries the reply correlation
+          const r = await request({ cmd: 'setskill', group: edit.id, set1: !!edit.set1, set2: !!edit.set2 }, 120000);
+          if (!r.ok) throw new Error(r.error || 'Path of Building could not change the skill\'s weapon sets.');
+          xml = r.xml || xml;
+          result = { xml, skill: r.skill || null };
+        }
+        if (!result || !result.xml) throw new Error('Path of Building returned no build XML for the edit.');
+      } catch (err) {
+        buildInfo = null; infoGen = -1; stop();
+        throw err;
+      }
+      try {
+        await restore(before);
+      } catch (err) {
+        buildInfo = null; infoGen = -1; stop();
+        const failure = new Error('The build could not be restored after the edit: ' + (err && err.message ? err.message : String(err)));
+        failure.code = 'TRIAL_RESTORE_FAILED';
+        throw failure;
+      }
+      return result;
+    }, options);
+  }
+
   // put the document, its overrides and the weapon set back, and prove it
   async function restore(before) {
     if (!before.xml) { buildXml = null; overrides = []; weaponSet = 0; gen++; buildInfo = null; infoGen = -1; return; }
@@ -315,7 +361,7 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
 
   return {
     available, start, stop, resetFailure, setBuild, transaction,
-    version: engineVersion, trialDocuments,
+    version: engineVersion, trialDocuments, editDocument,
     loadBuild: (xml, over) => { setBuild(xml, over === undefined ? overrides : over); return transaction((engine) => engine.ensureLoaded()); },
     evalItems: (items) => transaction((engine) => engine.evalItems(items)),
     makeQuery: (opts) => transaction((engine) => engine.makeQuery(opts)),
