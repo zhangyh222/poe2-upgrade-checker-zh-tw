@@ -1407,6 +1407,7 @@ const pobLastTree = new Map();
 // The engine's mod pool is big (~600 KB for items), so it is loaded once per
 // session and kept in memory; matching an item line is then pure string work.
 let tierMatcher = null;
+let tierGroupsByName = null; // group name -> its tiers, for the tier sliders
 // Item mods are the bulk; runes, exclusive (unique-only) and desecrated lines live
 // in their own pools, so all four are merged before matching or a rune line looks
 // like "unknown" when it is simply in another file.
@@ -1424,9 +1425,38 @@ async function ensureTierMatcher() {
   }
   if (!groups.length) throw new Error('the modifier pool could not be read');
   tierMatcher = createMatcher(groups);
+  tierGroupsByName = new Map();
+  for (const g of groups) if (!tierGroupsByName.has(g.group)) tierGroupsByName.set(g.group, g.tiers || []);
   log(`affix tiers loaded (${loaded.join(', ')})`);
   return tierMatcher;
 }
+
+// everything the gear panel needs for one slot: each line, which affix it is, the
+// tier it rolled, and the whole tier ladder so the slider has real bounds
+ipcMain.handle('tiers:slot', async (_e, slot) => {
+  try {
+    const matcher = await ensureTierMatcher();
+    const { band } = require('./core/mod-text');
+    const item = (store.equipped || {})[slot] || null;
+    if (!item) return { ok: true, slot, item: null, lines: [] };
+    const lines = [];
+    for (const line of item.lines || []) {
+      const text = line && line.text;
+      if (!text) continue;
+      const m = matcher.match(text);
+      const ladder = m && tierGroupsByName.get(m.group);
+      lines.push({
+        text,
+        match: m || null,
+        tiers: ladder ? ladder.map((t) => ({ tier: t.tier, text: t.text, level: t.level, band: band(t.text) })) : null,
+      });
+    }
+    return { ok: true, slot, item: { name: item.name, baseType: item.baseType, itemClass: item.itemClass, rarity: item.rarity }, lines };
+  } catch (err) {
+    log('tiers slot: ' + (err.message || err));
+    return { ok: false, error: { key: 'Path of Building could not read the modifier pool: {0}', args: [err.message || String(err)] } };
+  }
+});
 ipcMain.handle('tiers:equipped', async () => {
   try {
     const matcher = await ensureTierMatcher();

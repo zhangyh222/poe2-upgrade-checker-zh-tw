@@ -16,6 +16,7 @@
       <button data-tab="gear" class="active" data-i18n-html="<i>⚔</i>My gear"><i>⚔</i>My gear</button>
       <button data-tab="char" data-i18n-html="<i>☰</i>Character"><i>☰</i>Character</button>
       <button data-tab="builds" data-i18n-html="<i>◈</i>Builds"><i>◈</i>Builds</button>
+      <button data-tab="gearquery" data-i18n-html="<i>⌖</i>Gear query"><i>⌖</i>Gear query</button>
       <button data-tab="passives" data-i18n-html="<i>❖</i>Passives"><i>❖</i>Passives</button>
       <button data-tab="test" data-i18n-html="<i>✎</i>换装测试"><i>✎</i>换装测试</button>
       <button data-tab="options" data-i18n-html="<i>⚙</i>Settings"><i>⚙</i>Settings</button>
@@ -219,6 +220,13 @@
     </section>
 
 
+    <section class="tab" id="tab-gearquery">
+      <header class="page-head">
+        <div><h2 data-i18n="Gear query">Gear query</h2><div class="sub" data-i18n="What the item you wear has, and what the replacement must keep. Tier 1 is the strongest roll.">What the item you wear has, and what the replacement must keep. Tier 1 is the strongest roll.</div></div>
+      </header>
+      <div class="grid g-2" id="gqBody"></div>
+    </section>
+
     <section class="tab" id="tab-builds">
       <header class="page-head">
         <div><h2 data-i18n="Builds">Builds</h2><div class="sub" data-i18n="Drafts and saved plans of this character's build. Nothing changes until you adopt a draft or apply a plan.">Drafts and saved plans of this character's build. Nothing changes until you adopt a draft or apply a plan.</div></div>
@@ -393,6 +401,7 @@
   <script src="statpanel.js"></script>
   <script src="character.js"></script>
   <script src="passives.js"></script>
+<script src="gearquery.js"></script>
   <script src="picker.js"></script>
 </body>
 </html>

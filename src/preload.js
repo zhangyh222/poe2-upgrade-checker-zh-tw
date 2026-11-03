@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('api', {
   draftSkillSet: (id, set1, set2) => ipcRenderer.invoke('drafts:skillSet', id, set1, set2),
   // which affix tier each equipped item's lines come from (T1 = best)
   tiersEquipped: () => ipcRenderer.invoke('tiers:equipped'),
+  // one slot's lines with their tier ladder (for the gear panel's sliders)
+  tiersSlot: (slot) => ipcRenderer.invoke('tiers:slot', slot),
   // "must still be true after the swap" conditions: global, slot (weapon slots
   // also carry a weapon set) and the temporary layer the caller passes in
   guardsGet: (slotName) => ipcRenderer.invoke('guards:get', slotName),
