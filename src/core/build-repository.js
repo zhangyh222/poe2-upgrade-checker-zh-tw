@@ -80,6 +80,73 @@ function createBuildRepository(directory) {
       const document = documentOf(input);
       return mutate((data) => { const d = draft(data, draftId, expectedRevision); d.document = document; d.revision++; d.updatedAt = new Date().toISOString(); return d; });
     },
+    // ---- saved plans: a named snapshot of the current build ----
+    savePlan(characterId, name) {
+      return mutate((data) => {
+        const base = current(data, characterId);
+        const id = randomUUID();
+        const plan = {
+          id, characterId, name: String(name || 'Plan').slice(0, 80),
+          document: clone(base.document), sourceRevision: base.revision,
+          savedAt: new Date().toISOString(),
+        };
+        data.plans[id] = plan;
+        return plan;
+      });
+    },
+    async listPlans(characterId) {
+      const data = await read();
+      return Object.values(data.plans)
+        .filter((p) => p && p.characterId === characterId)
+        .sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)))
+        .map((p) => ({ id: p.id, name: p.name, sourceRevision: p.sourceRevision, savedAt: p.savedAt, weaponSet: p.document.weaponSet }));
+    },
+    deletePlan(planId) {
+      return mutate((data) => {
+        if (!own(data.plans, planId)) throw failure('PLAN_NOT_FOUND', 'Plan not found.');
+        delete data.plans[planId];
+        return true;
+      });
+    },
+    // adopting a plan is a normal new revision, so the build it replaced stays in history
+    adoptPlan(planId, expectedCurrentRevision) {
+      return mutate((data) => {
+        const plan = own(data.plans, planId);
+        if (!plan) throw failure('PLAN_NOT_FOUND', 'Plan not found.');
+        const base = current(data, plan.characterId);
+        if (base.revision !== expectedCurrentRevision) throw failure('REVISION_CONFLICT', 'Current build changed since it was read.');
+        (data.history[plan.characterId] ||= []).push(clone(base));
+        data.history[plan.characterId] = data.history[plan.characterId].slice(-30);
+        return (data.current[plan.characterId] = {
+          characterId: plan.characterId, revision: base.revision + 1,
+          document: clone(plan.document), restoredFrom: { plan: plan.id, name: plan.name },
+          updatedAt: new Date().toISOString(),
+        });
+      });
+    },
+
+    // ---- history: the previous builds, newest first ----
+    async history(characterId) {
+      const data = await read();
+      const list = data.history[characterId] || [];
+      return list.slice().reverse().map((r) => ({ revision: r.revision, updatedAt: r.updatedAt, weaponSet: r.document && r.document.weaponSet }));
+    },
+    restoreHistory(characterId, revision, expectedCurrentRevision) {
+      return mutate((data) => {
+        const list = data.history[characterId] || [];
+        const entry = list.find((r) => r.revision === revision);
+        if (!entry) throw failure('HISTORY_NOT_FOUND', 'That build version is no longer kept.');
+        const base = current(data, characterId);
+        if (base.revision !== expectedCurrentRevision) throw failure('REVISION_CONFLICT', 'Current build changed since it was read.');
+        list.push(clone(base));
+        data.history[characterId] = list.slice(-30);
+        return (data.current[characterId] = {
+          characterId, revision: base.revision + 1, document: clone(entry.document),
+          restoredFrom: { history: revision }, updatedAt: new Date().toISOString(),
+        });
+      });
+    },
+
     discardDraft(draftId, expectedRevision) {
       return mutate((data) => {
         const d = draft(data, draftId, expectedRevision);

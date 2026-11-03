@@ -57,6 +57,12 @@ contextBridge.exposeInMainWorld('api', {
   draftStart: () => ipcRenderer.invoke('drafts:start'),
   draftWeaponSet: (n) => ipcRenderer.invoke('drafts:weaponSet', n),
   draftSkillSet: (id, set1, set2) => ipcRenderer.invoke('drafts:skillSet', id, set1, set2),
+  // saved build plans and the versions the build went through
+  plansList: () => ipcRenderer.invoke('plans:list'),
+  planSave: (name) => ipcRenderer.invoke('plans:save', name),
+  planDelete: (id) => ipcRenderer.invoke('plans:delete', id),
+  planApply: (id) => ipcRenderer.invoke('plans:apply', id),
+  historyRestore: (revision) => ipcRenderer.invoke('history:restore', revision),
   draftTrial: (opId) => ipcRenderer.invoke('drafts:trial', opId),
   cancelWork: (opId) => ipcRenderer.invoke('work:cancel', opId),
   draftAdopt: () => ipcRenderer.invoke('drafts:adopt'),

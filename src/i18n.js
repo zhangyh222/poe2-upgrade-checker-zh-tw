@@ -1251,6 +1251,14 @@
     "A skill has to stay usable in at least one weapon set.": "技能至少要能在一個武器組中使用。",
     "Cancel calculating": "取消試算",
     "The calculation was cancelled.": "已取消試算。",
+    "Build plans": "構築方案",
+    "Plan name": "方案名稱",
+    "Save current build": "儲存目前構築",
+    "Apply": "套用",
+    "Delete": "刪除",
+    "Restore": "還原",
+    "Previous versions": "先前版本",
+    "No saved plans yet.": "尚無已儲存的方案。",
   };
 
   // 简体中文界面文案；键与繁体词典保持一致，游戏复制文本及属性数据库内容不在此转换。
@@ -2663,6 +2671,14 @@
     "A skill has to stay usable in at least one weapon set.": "技能至少要能在一个武器组中使用。",
     "Cancel calculating": "取消试算",
     "The calculation was cancelled.": "已取消试算。",
+    "Build plans": "构筑方案",
+    "Plan name": "方案名称",
+    "Save current build": "保存当前构筑",
+    "Apply": "应用",
+    "Delete": "删除",
+    "Restore": "还原",
+    "Previous versions": "先前版本",
+    "No saved plans yet.": "尚无已保存的方案。",
   };
 
   const DICTS = { "zh-TW": zh, "zh-CN": zhCN };

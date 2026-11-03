@@ -34,19 +34,22 @@
   let draftError = '';
   let trialRunning = false;
   let trialOp = null;
+  let lastPlans = null; // saved plans + previous versions from the repository
   async function render(refresh) {
     if (busy) { again = again || !!refresh; return; }
     busy = true;
     const body = $('#charBody');
     try {
-      const [st, d, drafts] = await Promise.all([
+      const [st, d, drafts, planState] = await Promise.all([
         window.api.getState(),
         window.api.pobSheet(!!refresh),
         window.api.draftState().catch(() => null),
+        window.api.plansList().catch(() => null),
       ]);
       const prof = (st.profiles || []).find((p) => p.active);
       lastState = st;
       lastDrafts = drafts && drafts.ok ? drafts : null;
+      lastPlans = planState && planState.ok ? planState : null;
       // The page heading stays generic ("Character"); the active character's name is in the sidebar
       // selector. Putting the profile name here looked like a build-type label (e.g. "法系") on an
       // attack build, which confused players.
@@ -152,6 +155,26 @@
       + `<button type="button" class="link${canAdopt ? ' primary' : ''}" data-draft="adopt"${canAdopt ? '' : ' disabled'}>${t('Adopt')}</button>`
       + `<button type="button" class="link" data-draft="discard">${t('Discard')}</button></div>`
       + (draftError ? `<div class="neg small">${esc(draftError)}</div>` : ''));
+  }
+
+  // Saved plans are named snapshots of the whole build; the version list is what
+  // the build looked like before. Both apply as a new version, so either can be undone.
+  function plansCard(plansState) {
+    if (!plansState) return '';
+    const plans = plansState.plans || [];
+    const history = (plansState.history || []).slice(0, 6);
+    const planRows = plans.slice(0, 8).map((p) => `<div class="row"><span class="grow">${esc(p.name)}</span>`
+      + `<button type="button" class="link" data-plan="apply" data-id="${esc(p.id)}">${t('Apply')}</button>`
+      + `<button type="button" class="link" data-plan="delete" data-id="${esc(p.id)}">${t('Delete')}</button></div>`).join('');
+    const histRows = history.map((h) => `<div class="row"><span class="grow">${esc(t('Build version {0}', h.revision))} `
+      + `<small class="dim">${h.updatedAt ? new Date(h.updatedAt).toLocaleString() : ''}</small></span>`
+      + `<button type="button" class="link" data-history="${h.revision}">${t('Restore')}</button></div>`).join('');
+    return card(t('Build plans'),
+      `<div class="row"><input id="planName" class="text grow" maxlength="60" placeholder="${esc(t('Plan name'))}"/>`
+      + `<button type="button" class="link" data-plan="save">${t('Save current build')}</button></div>`
+      + (planRows || `<div class="dim small">${t('No saved plans yet.')}</div>`)
+      + (histRows ? `<h4 class="small">${t('Previous versions')}</h4>${histRows}` : '')
+      + (planError ? `<div class="neg small">${esc(planError)}</div>` : ''));
   }
 
   function sheetHtml(d, st, drafts) {
@@ -324,7 +347,7 @@
     // three groups of related cards, each stacked without gaps: what you deal, what you survive,
     // what you wear and how you're built
     const stack = (cls, title, parts) => { const inner = parts.filter(Boolean).join(''); return inner ? `<section class="char-stack ${cls}"><h4 class="char-group">${esc(title)}</h4>${inner}</section>` : ''; };
-    return `${hero}<div class="char-cols">${stack('s-off', t('Offence'), [minionCard, offence, skills])}${stack('s-def', t('Defence'), [defence, res, maxHit, resources])}${stack('s-build', t('Gear & build'), [draftCard(drafts, s.skills), gear, misc])}</div>`;
+    return `${hero}<div class="char-cols">${stack('s-off', t('Offence'), [minionCard, offence, skills])}${stack('s-def', t('Defence'), [defence, res, maxHit, resources])}${stack('s-build', t('Gear & build'), [draftCard(drafts, s.skills), plansCard(lastPlans), gear, misc])}</div>`;
   }
 
   function noPobHtml(d, st) {
@@ -524,6 +547,38 @@
     } finally {
       draftBusy = false;
       render(action === 'adopt' || action === 'trial');
+    }
+  });
+
+  // saved plans and previous versions: both replace the build, so both are a
+  // new version and the build they replaced stays restorable
+  let planBusy = false;
+  let planError = '';
+  document.addEventListener('click', async (ev) => {
+    const planBtn = ev.target.closest ? ev.target.closest('[data-plan]') : null;
+    const histBtn = planBtn ? null : (ev.target.closest ? ev.target.closest('[data-history]') : null);
+    if (!planBtn && !histBtn) return;
+    ev.stopPropagation();
+    if (planBusy) return;
+    planBusy = true; planError = '';
+    try {
+      let r = { ok: true };
+      if (planBtn && planBtn.dataset.plan === 'save') {
+        const input = document.querySelector('#planName');
+        r = await window.api.planSave(((input && input.value) || '').trim());
+      } else if (planBtn && planBtn.dataset.plan === 'apply') {
+        r = await window.api.planApply(planBtn.dataset.id);
+      } else if (planBtn && planBtn.dataset.plan === 'delete') {
+        r = await window.api.planDelete(planBtn.dataset.id);
+      } else if (histBtn) {
+        r = await window.api.historyRestore(Number(histBtn.dataset.history));
+      }
+      if (r && !r.ok) planError = displayError(r.error || r.reason || r.code);
+    } catch (err) {
+      planError = displayError(err && (err.message || err));
+    } finally {
+      planBusy = false;
+      render(true);
     }
   });
 

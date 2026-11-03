@@ -1056,6 +1056,61 @@ ipcMain.handle('drafts:trial', async (_e, opId) => {
   }
 });
 ipcMain.handle('work:cancel', (_e, opId) => ({ ok: pendingWork.cancel(String(opId || '')) }));
+// Put a document back into the app: the XML the engine loads, the weapon-set
+// preference, and every cached number. Shared by plans, history and draft adoption.
+function applyBuildDocument(document) {
+  const xml = document.xml;
+  if (xml !== pobXml()) {
+    fs.mkdirSync(path.dirname(pobFile()), { recursive: true });
+    fs.writeFileSync(pobFile(), xml);
+  }
+  const set = document.weaponSet === 2 ? 2 : document.weaponSet === 1 ? 1 : 0;
+  store.setSetting('weaponSet', set);
+  pobEngine().setWeaponSetValue(set);
+  pobSync();
+  refreshAll();
+}
+ipcMain.handle('plans:list', async () => {
+  try {
+    const id = store.data.activeProfile || 'main';
+    return { ok: true, plans: await buildRepo().listPlans(id), history: await buildRepo().history(id) };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('plans:save', async (_e, name) => {
+  try {
+    const id = store.data.activeProfile || 'main';
+    const base = await syncBuildDocument();
+    if (!base) return { ok: false, code: 'BUILD_NOT_FOUND', error: { key: DRAFT_ERRORS.BUILD_NOT_FOUND, args: [] } };
+    const plan = await buildRepo().savePlan(id, name);
+    log(`plan: saved "${plan.name}" from revision ${plan.sourceRevision}`);
+    return { ok: true, plan };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('plans:delete', async (_e, planId) => {
+  try { await buildRepo().deletePlan(String(planId)); return { ok: true }; } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('plans:apply', async (_e, planId) => {
+  try {
+    const id = store.data.activeProfile || 'main';
+    const base = await syncBuildDocument();
+    if (!base) return { ok: false, code: 'BUILD_NOT_FOUND', error: { key: DRAFT_ERRORS.BUILD_NOT_FOUND, args: [] } };
+    const applied = await buildRepo().adoptPlan(String(planId), base.revision);
+    applyBuildDocument(applied.document);
+    log(`plan: applied as revision ${applied.revision}`);
+    return { ok: true, revision: applied.revision };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('history:restore', async (_e, revision) => {
+  try {
+    const id = store.data.activeProfile || 'main';
+    const base = await syncBuildDocument();
+    if (!base) return { ok: false, code: 'BUILD_NOT_FOUND', error: { key: DRAFT_ERRORS.BUILD_NOT_FOUND, args: [] } };
+    const restored = await buildRepo().restoreHistory(id, Number(revision), base.revision);
+    applyBuildDocument(restored.document);
+    log(`history: restored version ${revision} as revision ${restored.revision}`);
+    return { ok: true, revision: restored.revision };
+  } catch (err) { return draftReply(err); }
+});
 ipcMain.handle('drafts:adopt', async () => {
   try {
     const draftId = activeDraftId();
@@ -1066,16 +1121,8 @@ ipcMain.handle('drafts:adopt', async () => {
     if (!draft || draft.status !== 'editing') return { ok: false, code: 'DRAFT_CLOSED', error: { key: DRAFT_ERRORS.DRAFT_CLOSED, args: [] } };
     const adopted = await draftService().adopt(draft.id, draft.revision, base.revision);
     // write the adopted document back: XML first, then the preferences it carries
-    const xml = adopted.document.xml;
-    if (xml !== pobXml()) {
-      fs.mkdirSync(path.dirname(pobFile()), { recursive: true });
-      fs.writeFileSync(pobFile(), xml);
-    }
-    store.setSetting('weaponSet', adopted.document.weaponSet === 2 ? 2 : adopted.document.weaponSet === 1 ? 1 : 0);
-    pobEngine().setWeaponSetValue(adopted.document.weaponSet || 0);
-    pobSync();
+    applyBuildDocument(adopted.document);
     setActiveDraftId(null);
-    refreshAll();
     log(`draft: adopted ${draft.id} as revision ${adopted.revision}`);
     return { ok: true, revision: adopted.revision, weaponSet: adopted.document.weaponSet, validation: adopted.validation || null };
   } catch (err) { return draftReply(err); }
