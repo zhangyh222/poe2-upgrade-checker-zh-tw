@@ -1371,6 +1371,19 @@ ipcMain.handle('pob:sheet', async (_e, refresh) => {
 // The passive tree for the Passives page (positions, links, names, stats). Big but read once
 // per character and calculation, so the page can redraw while zooming without asking PoB again.
 const pobLastTree = new Map();
+// passive node search with the points each match costs from what is allocated
+ipcMain.handle('nodes:search', async (_e, query, limit) => {
+  try {
+    if (!pobOn()) return { ok: false, error: { key: 'Path of Building is switched off on My gear (Judge items with Path of Building). Switch it on to see your character sheet.' } };
+    await pobEngine().ensureLoaded();
+    const r = await pobEngine().searchNodes(String(query || ''), Number(limit) || 30);
+    return r && r.ok ? r : { ok: false, error: (r && r.error) || 'Path of Building could not search the tree' };
+  } catch (err) {
+    log('nodes: ' + (err.message || err));
+    return { ok: false, error: { key: 'Path of Building could not search the passive tree: {0}', args: [err.message || String(err)] } };
+  }
+});
+
 ipcMain.handle('pob:tree', async () => {
   const context = pobContext.capture({ kind: 'tree' });
   const key = `${store.data.activeProfile}|${pobSheetGen}`;

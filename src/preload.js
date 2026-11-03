@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld('api', {
   draftDiscard: () => ipcRenderer.invoke('drafts:discard'),
   // the whole allocated passive tree, for the Passives page
   pobTree: () => ipcRenderer.invoke('pob:tree'),
+  // passive search with path cost: { nodes: [{id, name, cost, allocated, weaponSet, stats}] }
+  searchNodes: (query, limit) => ipcRenderer.invoke('nodes:search', query, limit),
   // where a character-sheet stat comes from (hover / click on the Character page)
   pobSources: (stat) => ipcRenderer.invoke('pob:sources', stat),
   // clicking a stat opens its own always-on-top window; clicking again closes it

@@ -39,6 +39,7 @@
   let view = { s: 0.02, x: 0, y: 0 }; // world -> screen: x*s + view.x
   let hover = null;
   let matches = new Set();
+  let searchInfo = new Map(); // id -> { cost, allocated } from the engine's search
   let filter = null; // a legend chip picked: highlight/zoom just those nodes
   let dragging = null;
 
@@ -182,7 +183,8 @@
       const x = n.x * view.s + view.x;
       const y = n.y * view.s + view.y;
       const r = radiusPx(n) + ((n.flags & 8) && view.s < 0.05 ? 0.6 : 0);
-      const keep = !filter || filterMatch(n);
+      // a legend chip or a search dims everything it did not keep
+      const keep = (filter ? filterMatch(n) : true) && (!matches.size || matches.has(n.id));
       ctx.globalAlpha = keep ? 1 : 0.14; // unfocused nodes fade back when a legend chip is picked
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -337,14 +339,54 @@
     tip.style.top = `${top}px`;
   }
 
-  function setMatches() {
-    const q = ($('#passSearch').value || '').trim().toLowerCase();
-    matches = new Set();
-    if (!q) return;
+  // Typing filters locally first so the tree answers immediately; the engine then
+  // replaces the list with its own matches, which carry the points each node costs
+  // from what is already allocated ("close to your path" is the question players ask).
+  function localMatches(q) {
+    const needle = q.toLowerCase();
+    const found = new Set();
     for (const n of nodes) {
       const hay = [n.name, gn(n.name), ...n.stats, ...n.stats.map(gt)].join(' ').toLowerCase();
-      if (hay.includes(q)) matches.add(n.id);
+      if (hay.includes(needle)) found.add(n.id);
     }
+    return found;
+  }
+
+  function renderResults(result) {
+    const box = $('#passResults');
+    if (!box) return;
+    if (!result) { box.innerHTML = ''; return; }
+    const rows = (result.nodes || []).slice(0, 12).map((n) => {
+      const cost = n.cost == null ? t('not connected') : (n.allocated ? t('already allocated') : t('{0} points away', n.cost));
+      return `<span class="lg pass-hit${n.allocated ? ' on' : ''}" data-node="${n.id}" role="button" tabindex="0">`
+        + `${esc(gn(n.name) || n.name)} <small class="dim">${esc(cost)}</small></span>`;
+    }).join('');
+    box.innerHTML = rows
+      ? `<span class="dim small">${esc(t('{0} matches', result.total))}</span> ${rows}`
+      : `<span class="dim small">${esc(t('Nothing matches that.'))}</span>`;
+  }
+
+  let searchTimer = null;
+  let searchSeq = 0;
+  async function runSearch() {
+    const q = ($('#passSearch').value || '').trim();
+    const seq = ++searchSeq;
+    matches = new Set();
+    searchInfo = new Map();
+    if (!q) { renderResults(null); draw(); return; }
+    matches = localMatches(q);
+    renderResults(null);
+    draw();
+    try {
+      const r = await window.api.searchNodes(q, 30);
+      if (seq !== searchSeq) return; // a later keystroke wins
+      if (r && r.ok) {
+        matches = new Set((r.nodes || []).map((n) => n.id));
+        searchInfo = new Map((r.nodes || []).map((n) => [n.id, n]));
+        renderResults(r);
+        draw();
+      }
+    } catch (_) { /* keep the local matches */ }
   }
 
   function focusNode(n) {
@@ -423,12 +465,24 @@
 
   $('#passFit').addEventListener('click', () => { if (tree) fitAll(); });
   $('#passCenter').addEventListener('click', () => { if (tree) centerAllocated(); });
-  $('#passSearch').addEventListener('input', () => { setMatches(); draw(); });
+  $('#passSearch').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 220);
+  });
   $('#passSearch').addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter') return;
-    setMatches();
-    const first = nodes.find((n) => matches.has(n.id));
-    if (first) focusNode(first);
+    clearTimeout(searchTimer);
+    runSearch().then(() => {
+      const first = nodes.find((n) => matches.has(n.id));
+      if (first) focusNode(first);
+    });
+  });
+  // clicking a match centres that node (the nearest ones are listed first)
+  $('#passResults').addEventListener('click', (ev) => {
+    const el = ev.target.closest('[data-node]');
+    if (!el) return;
+    const n = nodes.find((x) => x.id === Number(el.dataset.node));
+    if (n) focusNode(n);
   });
 
   // the legend chips filter the tree: pick one to highlight + zoom to those nodes, pick it again to clear
