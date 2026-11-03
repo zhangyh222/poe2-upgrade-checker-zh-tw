@@ -132,7 +132,8 @@ function evaluateGuards(guards, before, after, options = {}) {
 
 // The search-level result: any fail is a fail; no fail but unverified is unverified.
 function overall(results) {
-  if (!results.length) return 'pass';
+  // nothing was checked is not "everything passed"
+  if (!results.length) return 'unverified';
   if (results.some((r) => r.status === 'fail')) return 'fail';
   if (results.some((r) => r.status === 'unverified')) return 'unverified';
   return 'pass';

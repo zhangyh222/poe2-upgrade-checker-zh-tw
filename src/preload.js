@@ -61,6 +61,9 @@ contextBridge.exposeInMainWorld('api', {
   tiersEquipped: () => ipcRenderer.invoke('tiers:equipped'),
   // one slot's lines with their tier ladder (for the gear panel's sliders)
   tiersSlot: (slot) => ipcRenderer.invoke('tiers:slot', slot),
+  // the gear panel's two steps: find candidates, then check each one with Path of Building
+  gearQuerySearch: (payload) => ipcRenderer.invoke('gearquery:search', payload),
+  gearQueryVerify: (payload) => ipcRenderer.invoke('gearquery:verify', payload),
   // "must still be true after the swap" conditions: global, slot (weapon slots
   // also carry a weapon set) and the temporary layer the caller passes in
   guardsGet: (slotName) => ipcRenderer.invoke('guards:get', slotName),

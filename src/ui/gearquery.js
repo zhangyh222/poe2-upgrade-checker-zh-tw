@@ -23,6 +23,34 @@
   let temp = []; // temporary conditions for this panel session
   let busy = false;
   let message = '';
+  let candidates = []; // listings from the trade search
+  let verified = null; // the same listings after Path of Building + the condition layers
+  let workMsg = '';
+  let working = false;
+
+  const firstNumber = (text) => {
+    const m = String(text || '').match(/-?\d+(?:\.\d+)?/);
+    return m ? Number(m[0]) : null;
+  };
+  const bandOf = (line, tier) => {
+    const hit = (line.tiers || []).find((x) => x.tier === tier);
+    return hit && hit.band ? hit.band.min : firstNumber(line.text);
+  };
+  const requiredPicks = () => {
+    const out = [];
+    for (const line of (slotInfo && slotInfo.lines) || []) {
+      const c = choices.get(line.text);
+      if (!c || c.action === 'ignore' || !line.match) continue;
+      out.push({ text: line.text, min: c.action === 'keep' ? firstNumber(line.text) : bandOf(line, c.tier) });
+    }
+    return out;
+  };
+  const statusTag = (status) => {
+    const cls = status === 'pass' ? 'good' : status === 'fail' ? 'neg' : 'dim';
+    const label = status === 'pass' ? t('Calculated: passed') : status === 'fail' ? t('Calculated: failed') : t('Not verified');
+    return `<span class="char-tag ${cls}">${esc(label)}</span>`;
+  };
+  const RESULT = { pass: 'pass', fail: 'fail', unverified: 'unverified' };
 
   const METRIC_LABELS = {
     life: 'Life', energyShield: 'Energy Shield', ehp: 'Effective HP', dps: 'DPS',
@@ -99,7 +127,31 @@
       + `<div class="dim small">${t('A temporary condition can tighten an inherited one, never loosen it.')}</div>`
       + (message ? `<div class="small ${message.ok ? 'pos' : 'neg'}">${esc(message.text)}</div>` : '')
       + `</div>`;
-    body.innerHTML = itemCard + guardsCard;
+    const rows = (verified || candidates).slice(0, 10).map((c) => {
+      const v = verified ? verified.find((x) => x.id === c.id) : null;
+      const fails = v && v.guards ? v.guards.filter((g) => g.status === 'fail') : [];
+      const fmtDelta = (d) => {
+        const sign = d > 0 ? '+' : '';
+        if (Math.abs(d) >= 10000) return `${sign}${(d / 1000).toFixed(1)}k`;
+        if (Math.abs(d) >= 100) return `${sign}${Math.round(d)}`;
+        return `${sign}${Math.round(d * 10) / 10}`;
+      };
+      const deltas = v && v.guards ? v.guards.filter((g) => g.delta != null).slice(0, 3)
+        .map((g) => `${esc(t(METRIC_LABELS[g.metric] || g.metric))} ${fmtDelta(g.delta)}`).join(' · ') : '';
+      return `<div class="row gq-candidate"><span class="grow">${esc(gn(c.name))}</span>`
+        + `<small class="dim">${esc(c.priceText || '')}</small>`
+        + (v ? statusTag(v.status) : '')
+        + (fails.length ? `<small class="neg">${esc(fails.map((f) => t(METRIC_LABELS[f.metric] || f.metric)).join(', '))}</small>` : '')
+        + (deltas ? `<small class="dim">${esc(deltas)}</small>` : '')
+        + `</div>`;
+    }).join('');
+    const resultsCard = `<div class="card-p gq-wide"><h3>${t('Candidates')}</h3>`
+      + `<div class="row"><button type="button" class="link" data-gq="search">${t('Search candidates')}</button>`
+      + `<button type="button" class="link" data-gq="verify"${candidates.length ? '' : ' disabled'}>${t('Check each with Path of Building')}</button>`
+      + `<span class="dim small">${esc(workMsg)}</span></div>`
+      + (rows || `<div class="dim small">${t('Nothing searched yet.')}</div>`)
+      + `</div>`;
+    body.innerHTML = itemCard + guardsCard + resultsCard;
   }
 
   async function loadSlot() {
@@ -171,6 +223,29 @@
   });
 
   document.addEventListener('click', async (ev) => {
+    const gq = ev.target.closest ? ev.target.closest('[data-gq]') : null;
+    if (gq) {
+      ev.stopPropagation();
+      if (working) return;
+      if (gq.dataset.gq === 'search') {
+        const picks = requiredPicks();
+        if (!picks.length) { workMsg = t('Pick at least one affix to require.'); render(); return; }
+        working = true; workMsg = t('Searching the trade site…'); render();
+        const r = await window.api.gearQuerySearch({ slot, picks }).catch((err) => ({ ok: false, error: err.message }));
+        working = false;
+        if (!r || !r.ok) { candidates = []; verified = null; workMsg = displayError((r && r.error) || 'search failed'); }
+        else { candidates = r.candidates || []; verified = null; workMsg = t('{0} candidates', r.total == null ? candidates.length : r.total); }
+        render();
+      } else if (gq.dataset.gq === 'verify') {
+        working = true; workMsg = t('Checking with Path of Building…'); render();
+        const r = await window.api.gearQueryVerify({ slot, candidates }).catch((err) => ({ ok: false, error: err.message }));
+        working = false;
+        if (!r || !r.ok) workMsg = displayError((r && r.error) || 'check failed');
+        else { verified = r.candidates || []; workMsg = t('Checked {0} items', verified.length); }
+        render();
+      }
+      return;
+    }
     const el = ev.target.closest ? ev.target.closest('[data-guard]') : null;
     if (!el) return;
     ev.stopPropagation();

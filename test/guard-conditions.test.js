@@ -61,6 +61,10 @@ test('no failures but missing data is unverified, never a pass', () => {
   assert.equal(overall(rows), 'unverified');
 });
 
+test('no conditions is unverified, not a green pass', () => {
+  assert.equal(overall([]), 'unverified');
+});
+
 test('a condition that belongs to one weapon set is unverified while comparing the other', () => {
   const g = mergeGuards({ slot: [{ metric: 'dps', op: 'keep', slot: 'Weapon', weaponSet: 2 }] });
   const rows = evaluateGuards(g, before, after, { weaponSet: 1 });

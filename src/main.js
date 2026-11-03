@@ -1479,6 +1479,90 @@ ipcMain.handle('tiers:equipped', async () => {
   }
 });
 
+// ---------- gear query: from conditions to candidates to verified results ----------
+// One line of an item, turned into a trade filter. The trade site's stats use "#"
+// placeholders, so the line is shape-matched the same way the tier index is.
+function tradeShape(text) {
+  return String(text || '')
+    .replace(/\s*\((?:enchant|implicit|rune|crafted|fractured|desecrated|mutated)\)\s*$/i, '')
+    .replace(/-?\d+(?:\.\d+)?/g, '#')
+    .trim();
+}
+const firstNumber = (text) => {
+  const m = String(text || '').match(/-?\d+(?:\.\d+)?/);
+  return m ? Number(m[0]) : null;
+};
+ipcMain.handle('gearquery:search', async (_e, payload) => {
+  try {
+    const { slot, picks } = payload || {};
+    if (!slot || !Array.isArray(picks) || !picks.length) return { ok: false, error: { key: 'Pick at least one affix to require.', args: [] } };
+    const item = (store.equipped || {})[slot];
+    if (!item) return { ok: false, error: { key: 'Nothing equipped in this slot.', args: [] } };
+    const d = await loadTradeData(false);
+    const mapped = [];
+    const unmatched = [];
+    for (const p of picks) {
+      const shape = tradeShape(p.text);
+      const min = Number.isFinite(Number(p.min)) ? Number(p.min) : firstNumber(p.text);
+      mapped.push({ key: shape, min: min == null ? '' : min, source: /\(implicit\)/i.test(p.text) ? 'implicit' : null });
+    }
+    const { body, unmatched: missed } = trade.buildQuery(mapped, {
+      itemClass: item.itemClass, baseType: item.baseType, matchBase: false, status: store.settings.status,
+      statIndex: d.index, filtersData: d.filters, ignoreRules: ignoreRules(), preferLocal: ['Weapon', 'Offhand', 'Helmet', 'Body Armour', 'Gloves', 'Boots'].includes(slot),
+    });
+    if (!body.query.stats.length || !body.query.stats[0].filters.length) {
+      return { ok: false, error: { key: 'None of those affixes could be matched on the trade site.', args: [] }, unmatched: missed };
+    }
+    unmatched.push(...(missed || []));
+    trade.applyBudget(body, budgetNow(payload.budget));
+    const r = await runSearch(pickLeague(d, payload.league), body, `gear query ${slot}`);
+    if (!r || !r.ok) return r || { ok: false, error: { key: 'The trade search failed.', args: [] } };
+    if (!r.ids || !r.ids.length) return { ok: true, total: r.total || 0, candidates: [], unmatched };
+    const raw = await fetchListings(r.league, r.searchId, r.ids.slice(0, 10));
+    const rates = { ...(store.settings.currencyRates || {}), ...(store.settings.divineRate ? { divine: store.settings.divineRate } : {}) };
+    const candidates = [];
+    for (const x of raw) {
+      const s = listingLib.summarise(x, item.itemClass, rates);
+      if (!s || !s.item) continue;
+      candidates.push({ id: x.id, name: s.item.name, text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
+    }
+    log(`gear query: ${candidates.length} candidates for ${slot} (${picks.length} affixes)`);
+    return { ok: true, total: r.total, candidates, unmatched };
+  } catch (err) {
+    log('gear query: ' + (err.message || err));
+    return { ok: false, error: { key: 'The trade search failed: {0}', args: [err.message || String(err)] } };
+  }
+});
+
+// Every candidate through Path of Building, then through the three condition layers.
+ipcMain.handle('gearquery:verify', async (_e, payload) => {
+  try {
+    const { slot, candidates } = payload || {};
+    const pobSlot = pobVerdict.SLOT_TO_POB[slot] || slot;
+    const id = store.data.activeProfile || 'main';
+    const own = guardsFor(id);
+    const merged = guardLib.mergeGuards({ global: own.global || [], slot: (own.slots || {})[slot] || [], slotName: slot });
+    // no conditions means nothing was checked: that is "unverified", not a pass
+    const noConditions = !merged.effective.length;
+    const out = [];
+    for (const c of candidates || []) {
+      if (!c || !c.text) { out.push({ ...c, status: 'unverified', reason: 'no item text' }); continue; }
+      try {
+        const [r] = await pobEngine().evalItems([{ slot: pobSlot, text: c.text }]);
+        if (!r || !r.ok) { out.push({ ...c, status: 'unverified', reason: (r && r.error) || 'Path of Building could not read this item' }); continue; }
+        const rows = guardLib.evaluateGuards(merged, r.before, r.after, { weaponSet: store.settings.weaponSet || 0 });
+        out.push({ ...c, status: noConditions ? 'unverified' : guardLib.overall(rows), guards: rows, before: r.before, after: r.after, reason: noConditions ? 'no conditions set' : null });
+      } catch (err) {
+        out.push({ ...c, status: 'unverified', reason: err.message || String(err) });
+      }
+    }
+    return { ok: true, candidates: out, conflicts: merged.conflicts || [] };
+  } catch (err) {
+    log('gear verify: ' + (err.message || err));
+    return { ok: false, error: { key: 'Path of Building could not check these items: {0}', args: [err.message || String(err)] } };
+  }
+});
+
 // passive node search with the points each match costs from what is allocated
 ipcMain.handle('nodes:search', async (_e, query, limit) => {
   try {
