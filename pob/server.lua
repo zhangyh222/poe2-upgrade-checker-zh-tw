@@ -1197,6 +1197,51 @@ local function useWeaponSet(n)
   return r
 end
 
+-- Item modifier tiers: Path of Building ships the mod pool (Data/ModItem.lua and friends)
+-- with each tier's value range, item level and the bases it can roll on, but no tier
+-- number. The number is what the game shows: within one group the highest item level is
+-- T1. Groups are returned sorted by name, tiers from best (T1) to worst.
+local TIER_KINDS = {
+  Item = true, Flask = true, Charm = true, Jewel = true, IncursionLimb = true,
+  Corruption = true, Runes = true, Exclusive = true, Desecrated = true,
+}
+
+local function affixTiers(req)
+  local kind = tostring(req.kind or "Item")
+  if not TIER_KINDS[kind] then return { ok = false, error = "unknown mod kind " .. kind } end
+  local source = data and data.itemMods and data.itemMods[kind]
+  if not source then return { ok = false, error = "no modifier data for " .. kind } end
+  local filter = tostring(req.filter or ""):lower()
+  local groups = {}
+  for id, mod in pairs(source) do
+    local group = mod.group
+    if group and (mod.type == "Prefix" or mod.type == "Suffix") then
+      local text = mod[1] or ""
+      if filter == "" or group:lower():find(filter, 1, true) or text:lower():find(filter, 1, true) then
+        local g = groups[group]
+        if not g then g = { group = group, type = mod.type, tiers = {} }; groups[group] = g end
+        local bases = {}
+        for i, key in ipairs(mod.weightKey or {}) do
+          if (mod.weightVal or {})[i] and mod.weightVal[i] > 0 then bases[#bases + 1] = key end
+        end
+        g.tiers[#g.tiers + 1] = { id = id, affix = mod.affix, text = text, level = tonumber(mod.level) or 0, bases = bases }
+      end
+    end
+  end
+  local out = {}
+  for _, g in pairs(groups) do
+    table.sort(g.tiers, function(a, b)
+      if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+      return tostring(a.id) < tostring(b.id)
+    end)
+    for i, t in ipairs(g.tiers) do t.tier = i end
+    g.tierCount = #g.tiers
+    out[#out + 1] = g
+  end
+  table.sort(out, function(a, b) return tostring(a.group) < tostring(b.group) end)
+  return { ok = true, kind = kind, groups = out, count = #out }
+end
+
 -- Passive nodes matching a phrase, with how many unallocated points they cost from
 -- what is already allocated. Walking the tree here (0-1 BFS over the connections)
 -- keeps the path honest: a node behind a keystone is not "1 point away".
@@ -1364,6 +1409,8 @@ while true do
       return saveXml()
     elseif req.cmd == "nodes" then
       return searchNodes(req)
+    elseif req.cmd == "tiers" then
+      return affixTiers(req)
     elseif req.cmd == "setskill" then
       return setSkillWeaponSet(req)
     elseif req.cmd == "quit" then

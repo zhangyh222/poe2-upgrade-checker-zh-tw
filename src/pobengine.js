@@ -366,6 +366,8 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     evalItems: (items) => transaction((engine) => engine.evalItems(items)),
     // passive nodes matching a phrase, with the points they cost from what is allocated
     searchNodes: (query, limit) => transaction((engine) => engine.send({ cmd: 'nodes', query: String(query || ''), limit: Number(limit) || 20 }, 120000)),
+    // the mod pool with derived tiers (T1 = best within a group), optionally filtered
+    affixTiers: (kind, filter) => transaction((engine) => engine.send({ cmd: 'tiers', kind: kind || 'Item', filter: filter || '' }, 180000)),
     makeQuery: (opts) => transaction((engine) => engine.makeQuery(opts)),
     setWeaponSet: (n) => transaction((engine) => engine.setWeaponSet(n)),
     setWeaponSetValue,
