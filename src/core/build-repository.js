@@ -80,6 +80,13 @@ function createBuildRepository(directory) {
       const document = documentOf(input);
       return mutate((data) => { const d = draft(data, draftId, expectedRevision); d.document = document; d.revision++; d.updatedAt = new Date().toISOString(); return d; });
     },
+    discardDraft(draftId, expectedRevision) {
+      return mutate((data) => {
+        const d = draft(data, draftId, expectedRevision);
+        d.status = 'discarded'; d.updatedAt = new Date().toISOString();
+        return d;
+      });
+    },
     adoptDraft(draftId, expectedDraftRevision, expectedCurrentRevision, validate) {
       return mutate(async (data) => {
         const d = draft(data, draftId, expectedDraftRevision), base = current(data, d.characterId);

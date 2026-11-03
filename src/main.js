@@ -161,6 +161,67 @@ function pobSync() {
   // open source panels recalculate their numbers too
   for (const win of statPanels.values()) { try { if (!win.isDestroyed()) win.webContents.send('sources:refresh'); } catch (_) { /* ignore */ } }
 }
+// ---------- build documents & drafts ----------
+// The XML file stays the build the engine loads. The repository adds a versioned
+// document (XML + the gear copied in game + the weapon set) and the drafts that
+// Path of Building has to calculate before they can be adopted. A draft carries
+// the revision it was opened on, so work done in the meantime makes it stale
+// instead of being overwritten by it.
+const { createBuildRepository } = require('./core/build-repository');
+const { createBuildDrafts } = require('./core/build-drafts');
+let buildRepoHandle = null;
+function buildRepo() {
+  if (!buildRepoHandle) buildRepoHandle = createBuildRepository(path.join(app.getPath('userData'), 'builds'));
+  return buildRepoHandle;
+}
+const draftService = () => createBuildDrafts({ repository: buildRepo(), engine: pobEngine() });
+const sameDocument = (a, b) => !!a && !!b && a.xml === b.xml
+  && (a.weaponSet || 0) === (b.weaponSet || 0)
+  && JSON.stringify(a.overrides || []) === JSON.stringify(b.overrides || []);
+function currentDocument() {
+  const xml = pobXml();
+  if (!xml) return null;
+  const set = store.settings.weaponSet;
+  let weaponSet = set === 2 ? 2 : set === 1 ? 1 : 0;
+  // "follow the build" is not what the page necessarily shows: the main skill's
+  // own weapon set aligns it. Record the set being calculated, so a draft is
+  // compared against the numbers the player is actually looking at.
+  if (!weaponSet) {
+    const info = pobEng && pobEng.info();
+    if (info) weaponSet = info.weaponSwap ? 2 : 1;
+  }
+  return { xml, overrides: pobOverrides(), weaponSet };
+}
+// record what the app is showing as the current build; only a real change is a new revision
+async function syncBuildDocument() {
+  const document = currentDocument();
+  if (!document) return null;
+  const id = store.data.activeProfile || 'main';
+  const current = await buildRepo().getCurrent(id);
+  if (current && sameDocument(current.document, document)) return current;
+  return buildRepo().putCurrent(id, document, current ? current.revision : 0);
+}
+const activeDraftId = () => (store.settings.draftByProfile || {})[store.data.activeProfile || 'main'] || null;
+function setActiveDraftId(id) {
+  const map = { ...(store.settings.draftByProfile || {}) };
+  if (id) map[store.data.activeProfile || 'main'] = id; else delete map[store.data.activeProfile || 'main'];
+  store.setSetting('draftByProfile', map);
+}
+const DRAFT_ERRORS = {
+  REVISION_CONFLICT: 'This draft is stale: the build changed since it was opened. Open a new draft.',
+  DRAFT_NOT_VALIDATED: 'Path of Building did not pass this draft, so it was not adopted.',
+  DRAFT_CLOSED: 'This draft is already closed.',
+  DRAFT_NOT_FOUND: 'That draft no longer exists.',
+  BUILD_NOT_FOUND: 'Import a Path of Building build first.',
+  TRIAL_RESTORE_FAILED: 'The engine could not put your build back after the trial, so it was stopped.',
+};
+function draftReply(err) {
+  const code = (err && err.code) || 'DRAFT_FAILED';
+  const message = (err && err.message) || String(err);
+  log('draft: ' + message);
+  return { ok: false, code, reason: message, error: { key: DRAFT_ERRORS[code] || message, args: [] } };
+}
+
 const pobPriorities = () => ({ ...pobVerdict.DEFAULT_PRIORITIES, ...(store.settings.priorities || {}) });
 // Chaos Inoculation (seen in your PoB build) makes chaos resistance irrelevant
 // (remembered per character from the last time PoB loaded the build, so it doesn't flip when the engine idles)
@@ -916,6 +977,90 @@ ipcMain.handle('profiles:create', (_e, name, copy) => { const id = store.createP
 ipcMain.handle('profiles:rename', (_e, id, name) => { store.renameProfile(id, name); buildTrayMenu(); return true; });
 ipcMain.handle('profiles:delete', (_e, id) => { const ok = store.deleteProfile(id); pobSync(); refreshAll(); return ok; });
 
+// ---------- drafts (build versions that must be calculated before adoption) ----------
+ipcMain.handle('drafts:state', async () => {
+  try {
+    const id = store.data.activeProfile || 'main';
+    const current = await buildRepo().getCurrent(id);
+    const draftId = activeDraftId();
+    const draft = draftId ? await buildRepo().getDraft(draftId) : null;
+    if (draftId && (!draft || draft.status !== 'editing')) setActiveDraftId(null);
+    return {
+      ok: true,
+      current: current ? { revision: current.revision, weaponSet: current.document.weaponSet, updatedAt: current.updatedAt } : null,
+      draft: draft && draft.status === 'editing' ? draft : null,
+    };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('drafts:start', async () => {
+  try {
+    const id = store.data.activeProfile || 'main';
+    const base = await syncBuildDocument();
+    if (!base) return { ok: false, code: 'BUILD_NOT_FOUND', error: { key: DRAFT_ERRORS.BUILD_NOT_FOUND, args: [] } };
+    const draft = await draftService().start(id);
+    setActiveDraftId(draft.id);
+    log(`draft: opened ${draft.id} on revision ${draft.baseRevision}`);
+    return { ok: true, draft, baseRevision: base.revision };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('drafts:weaponSet', async (_e, n) => {
+  try {
+    const draftId = activeDraftId();
+    if (!draftId) return { ok: false, code: 'DRAFT_NOT_FOUND', error: { key: DRAFT_ERRORS.DRAFT_NOT_FOUND, args: [] } };
+    const draft = await buildRepo().getDraft(draftId);
+    if (!draft || draft.status !== 'editing') return { ok: false, code: 'DRAFT_CLOSED', error: { key: DRAFT_ERRORS.DRAFT_CLOSED, args: [] } };
+    const weaponSet = n === 2 ? 2 : n === 1 ? 1 : 0;
+    const updated = await buildRepo().updateDraft(draft.id, draft.revision, { ...draft.document, weaponSet });
+    return { ok: true, draft: updated };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('drafts:trial', async () => {
+  try {
+    const draftId = activeDraftId();
+    if (!draftId) return { ok: false, code: 'DRAFT_NOT_FOUND', error: { key: DRAFT_ERRORS.DRAFT_NOT_FOUND, args: [] } };
+    // what the app shows now is the baseline: record it first, so a gear change
+    // made while the draft was open shows up as a stale draft, not a silent win
+    await syncBuildDocument();
+    const result = await draftService().trial(draftId);
+    log(`draft: trial ${draftId} -> ${result.evidence.status}`);
+    return { ok: true, evidence: result.evidence, baseRevision: result.baseRevision, draft: result.draft };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('drafts:adopt', async () => {
+  try {
+    const draftId = activeDraftId();
+    if (!draftId) return { ok: false, code: 'DRAFT_NOT_FOUND', error: { key: DRAFT_ERRORS.DRAFT_NOT_FOUND, args: [] } };
+    const base = await syncBuildDocument();
+    if (!base) return { ok: false, code: 'BUILD_NOT_FOUND', error: { key: DRAFT_ERRORS.BUILD_NOT_FOUND, args: [] } };
+    const draft = await buildRepo().getDraft(draftId);
+    if (!draft || draft.status !== 'editing') return { ok: false, code: 'DRAFT_CLOSED', error: { key: DRAFT_ERRORS.DRAFT_CLOSED, args: [] } };
+    const adopted = await draftService().adopt(draft.id, draft.revision, base.revision);
+    // write the adopted document back: XML first, then the preferences it carries
+    const xml = adopted.document.xml;
+    if (xml !== pobXml()) {
+      fs.mkdirSync(path.dirname(pobFile()), { recursive: true });
+      fs.writeFileSync(pobFile(), xml);
+    }
+    store.setSetting('weaponSet', adopted.document.weaponSet === 2 ? 2 : adopted.document.weaponSet === 1 ? 1 : 0);
+    pobEngine().setWeaponSetValue(adopted.document.weaponSet || 0);
+    pobSync();
+    setActiveDraftId(null);
+    refreshAll();
+    log(`draft: adopted ${draft.id} as revision ${adopted.revision}`);
+    return { ok: true, revision: adopted.revision, weaponSet: adopted.document.weaponSet, validation: adopted.validation || null };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('drafts:discard', async () => {
+  try {
+    const draftId = activeDraftId();
+    if (!draftId) return { ok: true };
+    const draft = await buildRepo().getDraft(draftId);
+    if (draft && draft.status === 'editing') await buildRepo().discardDraft(draft.id, draft.revision);
+    setActiveDraftId(null);
+    return { ok: true };
+  } catch (err) { return draftReply(err); }
+});
+
 // ---------- resistances ----------
 ipcMain.handle('resists:set', (_e, r) => {
   const clean = {};
@@ -973,6 +1118,9 @@ ipcMain.handle('pob:import', async (_e, input) => {
     if (r.resists && !typed) store.setSetting('resists', resLib.snapshot({ ...r.resists, cap: (store.settings.resists && store.settings.resists.cap) || 75 }, store.equipped, 'pob', store.settings.resists));
     // keep the build itself for the Path of Building engine
     try { fs.mkdirSync(path.dirname(pobFile(profileId)), { recursive: true }); fs.writeFileSync(pobFile(profileId), xml); } catch (err) { log('pob: could not save the build: ' + err.message); }
+    // a new import is a new baseline: drafts opened against the old one are stale
+    setActiveDraftId(null);
+    syncBuildDocument().catch((err) => log('build document: ' + err.message));
     pobSync();
     context = pobContext.capture({ kind: 'import-loaded', profileId });
     refreshAll();

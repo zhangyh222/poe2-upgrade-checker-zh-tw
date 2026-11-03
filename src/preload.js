@@ -52,6 +52,13 @@ contextBridge.exposeInMainWorld('api', {
   pobStatus: (load) => ipcRenderer.invoke('pob:status', load),
   pobSheet: (refresh) => ipcRenderer.invoke('pob:sheet', refresh),
   pobWeaponSet: (n) => ipcRenderer.invoke('pob:weaponSet', n),
+  // build versions: a draft is calculated by Path of Building before it can be adopted
+  draftState: () => ipcRenderer.invoke('drafts:state'),
+  draftStart: () => ipcRenderer.invoke('drafts:start'),
+  draftWeaponSet: (n) => ipcRenderer.invoke('drafts:weaponSet', n),
+  draftTrial: () => ipcRenderer.invoke('drafts:trial'),
+  draftAdopt: () => ipcRenderer.invoke('drafts:adopt'),
+  draftDiscard: () => ipcRenderer.invoke('drafts:discard'),
   // the whole allocated passive tree, for the Passives page
   pobTree: () => ipcRenderer.invoke('pob:tree'),
   // where a character-sheet stat comes from (hover / click on the Character page)

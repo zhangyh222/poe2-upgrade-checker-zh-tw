@@ -21,7 +21,8 @@ function engine(sheets, { fail = null } = {}) {
     version: () => 'v0.9-test',
     trialDocuments: async (docs) => {
       if (fail) throw fail;
-      return docs.map((_, i) => sheets[i]);
+      // the engine reports each document as { ok, sheet }
+      return docs.map((_, i) => ({ ok: true, sheet: sheets[i] }));
     },
   };
 }
@@ -101,6 +102,16 @@ test('cancellation is not turned into evidence', () => fixture(async (dir, repo)
   const d = await drafts.start('main');
   await assert.rejects(drafts.trial(d.id), { name: 'AbortError' });
   assert.equal((await repo.getDraft(d.id)).status, 'editing');
+}));
+
+test('a bare sheet from the engine is accepted as well', () => fixture(async (dir, repo) => {
+  await repo.putCurrent('main', doc, 0);
+  const bare = { version: () => 'v0.9-test', trialDocuments: async () => [busy(), weaker()] };
+  const drafts = createBuildDrafts({ repository: repo, engine: bare });
+  const d = await drafts.start('main');
+  const trial = await drafts.trial(d.id);
+  assert.equal(trial.evidence.status, 'pass');
+  assert.equal(trial.evidence.delta.dpsPct, -20);
 }));
 
 test('the adopted document is what the engine should load next', () => fixture(async (dir, repo) => {

@@ -70,7 +70,10 @@ function createBuildDrafts({ repository, engine }) {
       if (err && err.name === 'AbortError') throw err;
       return { status: 'unverified', reason: 'engine did not finish: ' + (err && err.message ? err.message : String(err)), engineFingerprint, checkedAt };
     }
-    const [baseSheet, draftSheet] = sheets || [];
+    // the engine reports each document as { ok, sheet }; accept a bare sheet too
+    const unwrap = (x) => (x && x.sheet ? x.sheet : x);
+    const baseSheet = unwrap((sheets || [])[0]);
+    const draftSheet = unwrap((sheets || [])[1]);
     if (!baseSheet || !draftSheet) {
       return { status: 'unverified', reason: 'engine returned no character sheet for one of the documents', engineFingerprint, checkedAt };
     }

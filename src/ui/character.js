@@ -28,19 +28,28 @@
   let busy = false;
   let lastState = null; // the last state we drew, for the small edits made from this page
   let again = null; // a render asked for while one runs: do it straight after, not never
+  let lastDrafts = null; // { current, draft } from the build repository
+  let lastEvidence = null; // the engine's answer for the draft revision shown
+  let draftBusy = false;
+  let draftError = '';
   async function render(refresh) {
     if (busy) { again = again || !!refresh; return; }
     busy = true;
     const body = $('#charBody');
     try {
-      const [st, d] = await Promise.all([window.api.getState(), window.api.pobSheet(!!refresh)]);
+      const [st, d, drafts] = await Promise.all([
+        window.api.getState(),
+        window.api.pobSheet(!!refresh),
+        window.api.draftState().catch(() => null),
+      ]);
       const prof = (st.profiles || []).find((p) => p.active);
       lastState = st;
+      lastDrafts = drafts && drafts.ok ? drafts : null;
       // The page heading stays generic ("Character"); the active character's name is in the sidebar
       // selector. Putting the profile name here looked like a build-type label (e.g. "法系") on an
       // attack build, which confused players.
       $('#charTitle').textContent = t('Character');
-      body.innerHTML = d.sheet ? sheetHtml(d, st) : noPobHtml(d, st);
+      body.innerHTML = d.sheet ? sheetHtml(d, st, lastDrafts) : noPobHtml(d, st);
       srcCache.clear();
       closeHover();
       if (d.sheet) wireSources(body);
@@ -88,7 +97,49 @@
     }).join('');
   }
 
-  function sheetHtml(d, st) {
+  // ---- build versions and drafts ----
+  // A draft is a copy of the build the player can change and calculate first.
+  // It becomes the build only after Path of Building passed it, and the main
+  // process refuses it if the build moved in the meantime.
+  const fmtDelta = (v) => (!isNum(v) ? '–' : `${v > 0 ? '+' : ''}${n1(v)}%`);
+  const draftWsetName = (n) => (n === 2 ? t('Weapon set {0}', 2) : n === 1 ? t('Weapon set {0}', 1) : t('Follow the build'));
+  function evidenceHtml(e) {
+    const ok = e.status === 'pass'; const bad = e.status === 'fail';
+    const label = ok ? t('Calculated: passed') : bad ? t('Calculated: failed') : t('Not verified');
+    const bits = [];
+    if (e.delta && isNum(e.delta.dpsPct)) bits.push(`${t('Damage')} ${fmtDelta(e.delta.dpsPct)}`);
+    if (e.delta && isNum(e.delta.ehpPct)) bits.push(`${t('Effective HP')} ${fmtDelta(e.delta.ehpPct)}`);
+    return `<div class="draft-evidence"><span class="char-tag${ok ? ' good' : ''}${bad ? ' neg' : ''}">${esc(label)}</span>`
+      + (bits.length ? ` <span class="small">${esc(bits.join(' · '))}</span>` : '')
+      + (e.reason ? `<div class="dim small">${esc(e.reason)}</div>` : '')
+      + '</div>';
+  }
+  function draftCard(drafts) {
+    if (!drafts) return '';
+    const cur = drafts.current; const d = drafts.draft;
+    const head = `<div class="row"><b>${esc(cur ? t('Build version {0}', cur.revision) : t('No build version yet'))}</b>`
+      + (cur ? ` <span class="dim small">· ${esc(draftWsetName(cur.weaponSet))}</span>` : '') + '</div>';
+    if (!d) {
+      return card(t('Build version'), head
+        + `<div class="dim small">${t('A draft is a copy of this build: change its weapon set, calculate it, and your character is not touched until you adopt it.')}</div>`
+        + `<div class="row"><button type="button" class="link" data-draft="start">${t('Open a draft')}</button></div>`
+        + (draftError ? `<div class="neg small">${esc(draftError)}</div>` : ''));
+    }
+    const ev = lastEvidence && lastEvidence.draftId === d.id && lastEvidence.revision === d.revision ? lastEvidence.evidence : null;
+    const sets = [[0, t('Follow the build')], [1, t('Weapon set {0}', 1)], [2, t('Weapon set {0}', 2)]]
+      .map(([n, label]) => `<button type="button" class="link${(d.document.weaponSet || 0) === n ? ' on' : ''}" data-draft="set" data-set="${n}">${esc(label)}</button>`).join(' ');
+    const canAdopt = !!(ev && ev.status === 'pass');
+    return card(t('Draft'), head
+      + `<div class="dim small">${t('Draft revision {0}, based on build version {1}.', d.revision, d.baseRevision)}</div>`
+      + `<div class="row draft-sets">${sets}</div>`
+      + (ev ? evidenceHtml(ev) : `<div class="dim small">${t('Calculate the draft before adopting it.')}</div>`)
+      + `<div class="row"><button type="button" class="link" data-draft="trial">${t('Calculate the draft')}</button>`
+      + `<button type="button" class="link${canAdopt ? ' primary' : ''}" data-draft="adopt"${canAdopt ? '' : ' disabled'}>${t('Adopt')}</button>`
+      + `<button type="button" class="link" data-draft="discard">${t('Discard')}</button></div>`
+      + (draftError ? `<div class="neg small">${esc(draftError)}</div>` : ''));
+  }
+
+  function sheetHtml(d, st, drafts) {
     const s = d.sheet; const p = s.player || {}; const m = s.minion; const ci = !!p.ChaosInoculation || (isNum(p.Life) && p.Life <= 1);
     const minionMain = m && isNum(m.CombinedDPS) && m.CombinedDPS > 0;
     const playerDps = Math.max(p.FullDPS || 0, p.CombinedDPS || 0, p.TotalDPS || 0);
@@ -253,7 +304,7 @@
     // three groups of related cards, each stacked without gaps: what you deal, what you survive,
     // what you wear and how you're built
     const stack = (cls, title, parts) => { const inner = parts.filter(Boolean).join(''); return inner ? `<section class="char-stack ${cls}"><h4 class="char-group">${esc(title)}</h4>${inner}</section>` : ''; };
-    return `${hero}<div class="char-cols">${stack('s-off', t('Offence'), [minionCard, offence, skills])}${stack('s-def', t('Defence'), [defence, res, maxHit, resources])}${stack('s-build', t('Gear & build'), [gear, misc])}</div>`;
+    return `${hero}<div class="char-cols">${stack('s-off', t('Offence'), [minionCard, offence, skills])}${stack('s-def', t('Defence'), [defence, res, maxHit, resources])}${stack('s-build', t('Gear & build'), [draftCard(drafts), gear, misc])}</div>`;
   }
 
   function noPobHtml(d, st) {
@@ -410,6 +461,33 @@
     const el = ev.target.closest ? ev.target.closest('.wset-sel') : null;
     if (el) ev.stopPropagation();
   }, true);
+
+  // build versions: open a draft, change the weapon set it is calculated on,
+  // calculate it, then adopt or discard. Nothing touches the build until Adopt,
+  // and the main process refuses a stale or unverified draft.
+  document.addEventListener('click', async (ev) => {
+    const el = ev.target.closest ? ev.target.closest('[data-draft]') : null;
+    if (!el || draftBusy) return;
+    ev.stopPropagation();
+    draftBusy = true; draftError = '';
+    const action = el.dataset.draft;
+    try {
+      let r = { ok: true };
+      if (action === 'start') r = await window.api.draftStart();
+      else if (action === 'set') { r = await window.api.draftWeaponSet(Number(el.dataset.set)); lastEvidence = null; }
+      else if (action === 'trial') {
+        r = await window.api.draftTrial();
+        if (r.ok) lastEvidence = { draftId: r.draft.id, revision: r.draft.revision, evidence: r.evidence };
+      } else if (action === 'adopt') { r = await window.api.draftAdopt(); lastEvidence = null; }
+      else if (action === 'discard') { r = await window.api.draftDiscard(); lastEvidence = null; }
+      if (r && !r.ok) draftError = displayError(r.error || r.reason || r.code);
+    } catch (err) {
+      draftError = displayError(err && (err.message || err));
+    } finally {
+      draftBusy = false;
+      render(action === 'adopt' || action === 'trial');
+    }
+  });
 
   // the weapon set the whole character page is calculated on
   $('#charWset').addEventListener('click', async (ev) => {

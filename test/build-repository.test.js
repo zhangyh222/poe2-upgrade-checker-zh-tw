@@ -56,6 +56,16 @@ test('corrupt storage is never silently replaced by defaults', () => fixture(asy
   await assert.rejects(repo.putCurrent('main', doc, 0), SyntaxError);
   assert.equal(await fs.readFile(file, 'utf8'), '{broken');
 }));
+test('a discarded draft closes and leaves the current build alone', () => fixture(async (dir, repo) => {
+  await repo.putCurrent('main', doc, 0); const d = await repo.createDraft('main');
+  await repo.updateDraft(d.id, 1, { ...doc, weaponSet: 2 });
+  const discarded = await repo.discardDraft(d.id, 2);
+  assert.equal(discarded.status, 'discarded');
+  assert.equal((await repo.getCurrent('main')).document.weaponSet, 1);
+  await assert.rejects(repo.updateDraft(d.id, 2, doc), { code: 'DRAFT_CLOSED' });
+  await assert.rejects(repo.discardDraft(d.id, 2), { code: 'DRAFT_CLOSED' });
+}));
+
 test('reserved map keys cannot become characters', () => fixture(async (_, repo) => {
   await assert.rejects(repo.putCurrent('__proto__', doc, 0), { code: 'INVALID_ARGUMENT' });
   assert.equal(await repo.getCurrent('constructor'), null);

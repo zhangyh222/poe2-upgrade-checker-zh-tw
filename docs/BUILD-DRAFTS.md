@@ -1,36 +1,49 @@
-# 草稿试算与采用证据（P1 第二批）
+# 草稿：试算 → 采用（P1 第二、三批）
 
-2026-11-03，基线 a5a2815，分支 `agent/build-service-20261103`，提交 bbc2269。仍使用 PoB v0.23.1。
+2026-11-03，基线 a5a2815，分支 `agent/build-service-20261103`。仍使用 PoB v0.23.1，不宣称原生逐技能双组。
 
-## 已交付
+## 用户看到的东西
 
-**`engine.trialDocuments(docs, { signal })`**（`src/pobengine.js`）
-- 在一次排队运行里依次装载多份构筑文档，每份按自己的 `weaponSet` 计算并返回整张 sheet。
-- **立即恢复**被编辑的构筑（文档、覆盖装备、武器组），恢复后再次校验组别；恢复失败以 `TRIAL_RESTORE_FAILED` 明确报错并停引擎，不返回假成功。
-- 为什么不是"下次用再重载"：没有 `<ItemSet>` 段的构筑会沿用引擎里已有的物品集，`weaponset` 改的是这个构筑本身——惰性恢复会把试算用的组泄漏到用户正在看的页面上。真机验证正是先在这个假设上失败，才改成立即恢复。
-- `version()` 暴露就绪握手里的 PoB 版本，用于证据指纹。
+角色页「装备与 BD」里多了一张卡：
 
-**`createBuildDrafts({ repository, engine })`**（`src/core/build-drafts.js`）
-- `start(characterId)`：从当前文档开草稿。
-- `trial(draftId)`：只出证据，不落盘；可反复试。
-- `adopt(draftId, draftRevision, currentRevision)`：把试算作为校验回调交给 repository，由它在锁内复核两个 revision 后才持久化。
-- `engineDocument(characterId)`：采用后交给引擎的文档。
+- **构筑版本 N · 武器组 X**：当前构筑的版本号与它是在哪一组武器上算的。
+- **打开草稿**：复制当前构筑开一份草稿，角色本身不动。
+- 草稿里可以**跟随构筑 / 武器组 1 / 武器组 2**（改一次，草稿版本 +1）。
+- **试算草稿**：真实跑 Path of Building，给出 `已试算：通过 / 失败 / 未验证`，附伤害与有效生命的百分比变化。
+- **采用**（只有在“通过”且草稿未被改动过时才可点）：写回构筑、切到该武器组、整页重算，构筑版本 +1。
+- **放弃**：关闭草稿，构筑不变。
 
-**判定口径**（刻意收窄）
+## 判定口径（刻意收窄）
+
 - 两份文档都装载成功且都有数字 → `pass`；
 - 引擎失败、超时、取消、缺 sheet → `unverified`（取消抛 `AbortError`，不转成证据）；
 - 两侧 PoB 都没建模出伤害或防御 → `unverified`（缺数据，不是失败）；
-- 基准有伤害、草稿伤害为 0 → `fail`（可复现的损失）。
+- 基准有伤害、草稿伤害为 0 → `fail`。
+- 采用时由 repository 在文件锁内复核“当前版本”和“草稿版本”，任一不匹配即 `REVISION_CONFLICT`，不写盘。
+
+## 实现要点
+
+- `engine.trialDocuments(docs)`（`src/pobengine.js`）：一次排队运行里依次装载多份文档、各按自己的武器组计算，然后**立即恢复**被编辑的构筑并校验组别；恢复失败报 `TRIAL_RESTORE_FAILED` 并停引擎。
+  - 为什么必须立即恢复：没有 `<ItemSet>` 段的构筑会沿用引擎里已有的物品集，`weaponset` 改的是构筑本身，惰性恢复会把试算用的组泄漏到用户页面。真机验证先在这个假设上失败过。
+- `createBuildDrafts({ repository, engine })`（`src/core/build-drafts.js`）：把引擎结果转成证据，并作为 repository 采用时要求的校验回调。
+- `src/main.js`：`drafts:start / weaponSet / trial / adopt / discard / state` 六个 IPC；`syncBuildDocument()` 把“当前构筑”（XML + 游戏内复制装备 + 武器组）记成版本，只有真变化才 +1。
+- **基准对齐**：设置里“跟随构筑”不等于页面实际显示的组（主技能的组会把它对齐）。所以记录当前文档时写的是**正在计算的那一组**，否则草稿会拿另一组当基准。
+- `src/ui/character.js` + `src/i18n.js`：卡片与繁中/简中文案。
 
 ## 验证
 
-- `node --test test/*.test.js`：**127 项通过**（原 120 + 新增 7）。
-- `node tools/pob-drafts.js`：真实引擎通过——`set1 -50 / set2 -20 / restored -50`，且恢复后 `weaponSet()` 仍为 0（跟随构筑）。
-- `node tools/pob-regression.js`、`node tools/pob-transactions.js`：原有真机回归均通过。
+- `node --test test/*.test.js`：**128 项通过**（新增 8 项：草稿证据、引擎失败、失去全部伤害、两侧未建模、版本冲突、取消、采用后的文档、放弃）。
+- 真机脚本：`tools/pob-drafts.js`（试算并恢复）、`tools/pob-regression.js`、`tools/pob-transactions.js` 全通过。
+- **GUI 端到端**（隔离 APPDATA + 独立数据目录，真实构筑，PoB 0.23.1）：
+  1. 打开草稿 → “草稿版本 1，基准为构筑版本 1”；
+  2. 切到武器组 2 → 草稿版本 2；
+  3. 试算 → `已试算：通过 Damage +273.1% · 有效生命 -15.2%`，采用按钮解锁；
+  4. 采用 → 构筑版本 1 → 2，页面切到武器组 2，日志 `draft: adopted … as revision 2`。
+  5. 再开草稿（基准已是版本 2），不修改直接试算 → `Damage 0% · 有效生命 0%`，证明基准与页面一致。
 
 ## 尚未完成
 
-- 没有 IPC、没有 Store 接入、没有界面：玩家还不能开草稿、看证据或点采用。
-- 采用后如何写入 `pob/<profile>.xml` 与 `pobSync()` 仍是未接的最后一公里；当前 `engineDocument()` 只提供数据。
-- 证据只比较伤害/防御等有限指标，不是逐字段差异；不做"关键变化/全部变化"分级。
-- 原生逐技能双武器组仍未支持——试算是"同一份构筑换组算"，不是"每个技能各按自己的组算"。
+- 草稿目前只能改武器组；改装备/技能/天赋的编辑入口还没有（P2/P3）。
+- 证据只有伤害、有效生命等有限指标，不是逐字段差异，也没有“关键变化/全部变化”分级。
+- 采用只写回 XML、武器组偏好与缓存；装备覆盖仍走原有 Store，未改成 repository 单一来源。
+- 原生逐技能双武器组仍未支持（要升引擎 + 真实双组构筑样本）。
