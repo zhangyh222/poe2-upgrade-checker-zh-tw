@@ -266,8 +266,13 @@
       // weapon's own skill); for the rest it is picked here, and the damage panel is calculated on it.
       const skillKey = keyOf(g);
       const manual = (weaponSets || {})[`${profileId}|${skillKey}`] || '';
-      const known = g.weaponSet ? String(g.weaponSet) : '';
-      const value = known || manual;
+      // newer Path of Building keeps the sets on the skill itself (set1/set2 in the
+      // build XML) and calculates with them, so those win over the socketed weapon
+      // and over the dropdown this app used to keep in its own settings
+      const native = g.set1 !== undefined || g.set2 !== undefined;
+      const nativeValue = native ? (g.set1 && g.set2 ? '12' : g.set1 ? '1' : g.set2 ? '2' : '') : '';
+      const known = native ? nativeValue : (g.weaponSet ? String(g.weaponSet) : '');
+      const value = known || (native ? '' : manual);
       const setsOf = (v) => (v === '12' ? [1, 2] : v ? [Number(v)] : []);
       const setOff = known && g.inActiveSet === false;
       const setTag = known

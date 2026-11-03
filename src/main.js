@@ -1207,9 +1207,16 @@ async function alignWeaponSetToMain(engine) {
   const s = await pobContext.run(context, () => engine.sheet());
   const main = (s && s.skills || []).find((x) => x.main);
   if (!main) return context;
+  // newer PoB keeps the sets on the skill itself: align only when the main skill
+  // belongs to exactly one of them ("both" means the active set is the right one)
   // a skill socketed in a weapon slot knows its own set; anything else takes what you marked
-  const v = main.weaponSet ? String(main.weaponSet) : picks[`${pid}|${main.key || ''}`];
-  const want = v === '2' ? 2 : v === '1' ? 1 : 0;
+  let want = 0;
+  if (main.set1 !== undefined || main.set2 !== undefined) {
+    if (main.set1 && !main.set2) want = 1; else if (main.set2 && !main.set1) want = 2;
+  } else {
+    const v = main.weaponSet ? String(main.weaponSet) : picks[`${pid}|${main.key || ''}`];
+    want = v === '2' ? 2 : v === '1' ? 1 : 0;
+  }
   const cur = s.weaponSwap ? 2 : 1;
   if (!want) return context;
   if (want === cur) { engine.setWeaponSetValue(want); return context; }
@@ -1400,7 +1407,10 @@ ipcMain.handle('pob:weaponSet', async (_e, n) => {
       // Reading the selected main skill belongs to the same lease as switching.
       const s = await pobContext.run(context, () => engine.sheet());
       const main = ((s && s.skills) || []).find((x) => x.main);
-      if (main && main.key && !main.weaponSet) {
+      // with native per-skill sets the build owns that mark: switching the page's set
+      // must not overwrite it in this app's own settings
+      const nativeSets = !!main && (main.set1 !== undefined || main.set2 !== undefined);
+      if (main && main.key && !main.weaponSet && !nativeSets) {
         const all = { ...(store.settings.skillWeaponSets || {}) };
         all[`${store.data.activeProfile || 'main'}|${main.key}`] = String(set);
         store.setSetting('skillWeaponSets', all);

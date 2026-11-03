@@ -15,7 +15,12 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const POB_REPO = 'https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2.git';
-const POB_TAG = 'v0.23.1'; // update together with a test run against a real build
+// No release tag has the per-skill weapon-set support yet (v0.23.1 is the newest
+// 0.x tag), so this pins the dev commit the team reviewed: each skill group keeps
+// set1/set2 in the build XML and GetSocketGroupWeaponSet picks the set to calculate.
+// Update together with a run of tools/pob-smoke.js, pob-regression.js, pob-transactions.js
+// and pob-drafts.js against a real build.
+const POB_TAG = process.env.POB_REF || 'bb52d6b368307457eb9c54bb13f1829993d390b1';
 const ROOT = path.join(__dirname, '..');
 const DEST = path.join(ROOT, 'vendor', 'pob');
 const STAMP = path.join(DEST, '.pob-version');
@@ -41,12 +46,16 @@ function fetchPob() {
   fs.rmSync(DEST, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(DEST), { recursive: true });
   console.log(`Downloading Path of Building ${POB_TAG} (Lua and data only)...`);
-  run('git', ['clone', '--quiet', '--depth', '1', '--branch', POB_TAG, '--filter=blob:none', '--no-checkout', POB_REPO, DEST]);
+  // a ref can be a tag or a commit: init + fetch handles both, and by commit it
+  // is the exact revision we tested rather than "whatever the branch says today"
+  run('git', ['init', '--quiet', DEST]);
+  run('git', ['-C', DEST, 'remote', 'add', 'origin', POB_REPO]);
   run('git', ['-C', DEST, 'sparse-checkout', 'set', '--no-cone',
     '/src/**/*.lua', '/src/**/*.json', '!/src/Export/',
     '/runtime/lua/', '/runtime/lua51.dll', '/runtime/lua-utf8.dll', '/runtime/vcruntime140.dll',
     '/LICENSE.md', '/manifest.xml']);
-  run('git', ['-C', DEST, 'checkout', '--quiet']);
+  run('git', ['-C', DEST, 'fetch', '--quiet', '--depth', '1', 'origin', POB_TAG]);
+  run('git', ['-C', DEST, 'checkout', '--quiet', 'FETCH_HEAD']);
   fs.rmSync(path.join(DEST, '.git'), { recursive: true, force: true });
   fs.writeFileSync(STAMP, POB_TAG + '\n');
 }

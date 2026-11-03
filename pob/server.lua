@@ -323,11 +323,20 @@ local function sheet()
           keyGems[#keyGems + 1] = x.name
           if not x.support then activeGems[#activeGems + 1] = x.name end
         end
+        -- newer PoB keeps the per-skill weapon sets on the group itself (set1/set2
+        -- in the build XML). They are what the calculation uses, so report them;
+        -- weaponSet (from the socketed weapon) is the older signal and still sent.
+        local native1, native2 = nil, nil
+        if g.set1 ~= nil or g.set2 ~= nil then
+          native1 = g.set1 == true
+          native2 = g.set2 == true
+        end
         r.skills[#r.skills + 1] = {
           id = i, label = g.displayLabel or g.label, enabled = g.enabled ~= false, main = (i == build.mainSocketGroup),
           slot = g.slot, gems = gems,
           key = table.concat(#activeGems > 0 and activeGems or keyGems, "|"),
           weaponSet = wset, inActiveSet = (not wset) or wset == activeSet,
+          set1 = native1, set2 = native2,
         }
       end
     end

@@ -27,6 +27,10 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
   const operations = createOperationQueue();
   let buildXml = null; let buildInfo = null; let loading = null;
   let readyInfo = null; // { version } from the engine's ready handshake
+  // the pinned source revision (vendor/pob/.pob-version): PoB's own version string
+  // still says 0.23.x on the dev branch, so the fingerprint needs the commit too
+  let pinnedRef = null;
+  try { pinnedRef = fs.readFileSync(path.join(base, '.pob-version'), 'utf8').trim() || null; } catch (_) { /* packaged build: not shipped */ }
   let idleTimer = null;
   let lastError = null;
 
@@ -241,7 +245,11 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     }, options);
   }
 
-  const engineVersion = () => (readyInfo && readyInfo.version) || null;
+  const engineVersion = () => {
+    const v = (readyInfo && readyInfo.version) || null;
+    if (pinnedRef && v) return `${v}+${pinnedRef.slice(0, 7)}`;
+    return pinnedRef || v;
+  };
 
   // Try several build documents against one engine, one after another, and put
   // the active build back afterwards. Trials are not "transactions": each one
