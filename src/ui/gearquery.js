@@ -26,6 +26,7 @@
   let candidates = []; // listings from the trade search
   let verified = []; // the listings that went through Path of Building + the condition layers
   let searchCtx = null; // { league, searchId, ids, from } for "load more"
+  let searched = false; // a search has been run (so "0 results" is meaningful)
   let workMsg = '';
   let working = false;
   let budget = ''; // max price, in the chosen currency
@@ -201,6 +202,12 @@
       + `<option value="verdict"${sortBy === 'verdict' ? ' selected' : ''}>${t('best first')}</option></select>`
       + `<span class="dim small">${esc(workMsg)}</span></div>`
       + (rows || `<div class="dim small">${t('Nothing searched yet.')}</div>`)
+      // no results is usually "every affix had to be at least as good as now":
+      // offer the one loosening that keeps the requirement honest (a tier floor,
+      // not "anything goes") instead of silently relaxing it
+      + (searched && !candidates.length
+        ? `<div class="gq-hint"><div class="dim small">${t('No candidates. Every affix was required at its current value. Try "same tier" or "not required" on one of them, or raise the price cap.')}</div></div>`
+        : '')
       + `</div>`;
     body.innerHTML = itemCard + guardsCard + resultsCard;
   }
@@ -251,7 +258,7 @@
   document.addEventListener('change', async (ev) => {
     const el = ev.target;
     if (!el || !el.dataset) return;
-    if (el.id === 'gqSlot') { slot = el.value; temp = []; message = ''; await refresh(); return; }
+    if (el.id === 'gqSlot') { slot = el.value; temp = []; message = ''; searched = false; candidates = []; verified = []; searchCtx = null; await refresh(); return; }
     if (el.id === 'gqSort') { sortBy = el.value; render(); return; }
     if (el.id === 'gqBudget') { budget = el.value; return; }
     if (el.id === 'gqCurrency') { currency = el.value; return; }
@@ -346,6 +353,7 @@
         working = true; workMsg = t('Searching the trade site…'); render();
         const r = await window.api.gearQuerySearch({ slot, picks, budget: cap }).catch((err) => ({ ok: false, error: err.message }));
         working = false;
+        searched = true;
         if (!r || !r.ok) { candidates = []; verified = []; searchCtx = null; workMsg = displayError((r && r.error) || 'search failed'); }
         else {
           candidates = r.candidates || []; verified = [];
