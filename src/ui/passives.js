@@ -387,8 +387,12 @@
       return `<span class="lg pass-hit${n.allocated ? ' on' : ''}" data-node="${n.id}" role="button" tabindex="0">`
         + `${esc(gn(n.name) || n.name)} ${kinds} <small class="dim">${esc(cost)}</small></span>`;
     }).join('');
+    // a Chinese query was translated for the engine: say what was actually searched
+    const trans = result.translated && result.translated.english
+      ? `<span class="dim small"> → ${esc(result.translated.english)}${result.translated.dropped ? ` (${esc(t('ignored: {0}', result.translated.dropped))})` : ''}</span>`
+      : '';
     box.innerHTML = rows
-      ? `<span class="dim small">${esc(t('{0} matches', result.total))}</span> ${rows}`
+      ? `<span class="dim small">${esc(t('{0} matches', result.total))}</span>${trans} ${rows}`
       : `<span class="dim small">${esc(t('Nothing matches that.'))}</span>`;
   }
 

@@ -1654,12 +1654,26 @@ ipcMain.handle('nodes:path', async (_e, id) => {
 ipcMain.handle('nodes:search', async (_e, query, limit) => {
   try {
     if (!pobOn()) return { ok: false, error: { key: 'Path of Building is switched off on My gear (Judge items with Path of Building). Switch it on to see your character sheet.' } };
+    // the tree and the engine are English: a Chinese phrase is translated first,
+    // with the mapping checked against the app's zh-TW game dictionary
+    const zh = require('./core/zh-query');
+    let term = String(query || '');
+    let translated = null;
+    if (zh.hasChinese(term)) {
+      translated = zh.translate(term);
+      if (!translated.english) {
+        return { ok: false, error: { key: 'No English term matches "{0}" yet.', args: [term] }, translated };
+      }
+      term = translated.english;
+    }
     await pobEngine().ensureLoaded();
-    const r = await pobEngine().searchNodes(String(query || ''), Number(limit) || 30);
+    const r = await pobEngine().searchNodes(term, Number(limit) || 30);
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'Path of Building could not search the tree' };
     // tell the page what each match actually does (max shield vs % vs recharge …)
     const intent = require('./core/passive-intent');
     r.nodes = (r.nodes || []).map((n) => ({ ...n, kinds: intent.classify(n.stats) }));
+    r.query = term; // what was actually searched for, after any translation
+    if (translated) r.translated = translated;
     return r;
   } catch (err) {
     log('nodes: ' + (err.message || err));
