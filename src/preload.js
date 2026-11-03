@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld('api', {
   draftStart: () => ipcRenderer.invoke('drafts:start'),
   draftWeaponSet: (n) => ipcRenderer.invoke('drafts:weaponSet', n),
   draftSkillSet: (id, set1, set2) => ipcRenderer.invoke('drafts:skillSet', id, set1, set2),
+  // "must still be true after the swap" conditions: global, slot (weapon slots
+  // also carry a weapon set) and the temporary layer the caller passes in
+  guardsGet: (slotName) => ipcRenderer.invoke('guards:get', slotName),
+  guardsSet: (layer, slotName, conditions) => ipcRenderer.invoke('guards:set', layer, slotName, conditions),
   // saved build plans and the versions the build went through
   plansList: () => ipcRenderer.invoke('plans:list'),
   planSave: (name) => ipcRenderer.invoke('plans:save', name),

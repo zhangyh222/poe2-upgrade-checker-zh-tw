@@ -1070,6 +1070,38 @@ function applyBuildDocument(document) {
   pobSync();
   refreshAll();
 }
+// ---------- replacement conditions (global / slot / this search) ----------
+// Stored per character so switching characters loads that character's bar. The
+// temporary layer is passed in by the caller and never persisted.
+const guardLib = require('./core/guard-conditions');
+function guardsFor(profileId) {
+  const all = store.settings.guards || {};
+  return all[profileId] || { global: [], slots: {} };
+}
+ipcMain.handle('guards:get', (_e, slotName) => {
+  try {
+    const id = store.data.activeProfile || 'main';
+    const own = guardsFor(id);
+    const slot = slotName ? (own.slots && own.slots[slotName]) || [] : [];
+    const merged = guardLib.mergeGuards({ global: own.global || [], slot, slotName: slotName || null });
+    return { ok: true, global: own.global || [], slot, merged };
+  } catch (err) { return draftReply(err); }
+});
+ipcMain.handle('guards:set', (_e, layer, slotName, conditions) => {
+  try {
+    const id = store.data.activeProfile || 'main';
+    if (layer !== 'global' && layer !== 'slot') return { ok: false, code: 'INVALID_ARGUMENT', error: { key: 'Only the character and slot layers can be saved.', args: [] } };
+    const cleaned = (Array.isArray(conditions) ? conditions : []).map((c) => guardLib.cleanCondition(c, layer === 'global' ? 'global' : 'slot'));
+    const all = { ...(store.settings.guards || {}) };
+    const own = { global: [], slots: {}, ...(all[id] || {}) };
+    if (layer === 'global') own.global = cleaned;
+    else { if (!slotName) return { ok: false, code: 'INVALID_ARGUMENT', error: { key: 'A slot condition needs a slot.', args: [] } }; own.slots = { ...(own.slots || {}), [slotName]: cleaned }; }
+    all[id] = own;
+    store.setSetting('guards', all);
+    return { ok: true, guards: own };
+  } catch (err) { return draftReply(err); }
+});
+
 ipcMain.handle('plans:list', async () => {
   try {
     const id = store.data.activeProfile || 'main';
