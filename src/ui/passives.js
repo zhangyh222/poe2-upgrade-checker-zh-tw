@@ -356,10 +356,16 @@
     const box = $('#passResults');
     if (!box) return;
     if (!result) { box.innerHTML = ''; return; }
+    const KIND_LABEL = {
+      maxShield: 'max ES', esPercent: 'ES %', rechargeRate: 'recharge', rechargeDelay: 'delay',
+      spirit: 'spirit', life: 'life', resistances: 'res',
+    };
     const rows = (result.nodes || []).slice(0, 12).map((n) => {
       const cost = n.cost == null ? t('not connected') : (n.allocated ? t('already allocated') : t('{0} points away', n.cost));
+      // what the node actually gives, so "energy shield" matches are not one lump
+      const kinds = (n.kinds || []).map((k) => `<small class="kind">${esc(KIND_LABEL[k] || k)}</small>`).join('');
       return `<span class="lg pass-hit${n.allocated ? ' on' : ''}" data-node="${n.id}" role="button" tabindex="0">`
-        + `${esc(gn(n.name) || n.name)} <small class="dim">${esc(cost)}</small></span>`;
+        + `${esc(gn(n.name) || n.name)} ${kinds} <small class="dim">${esc(cost)}</small></span>`;
     }).join('');
     box.innerHTML = rows
       ? `<span class="dim small">${esc(t('{0} matches', result.total))}</span> ${rows}`

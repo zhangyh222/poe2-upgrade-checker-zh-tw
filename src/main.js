@@ -1409,7 +1409,11 @@ ipcMain.handle('nodes:search', async (_e, query, limit) => {
     if (!pobOn()) return { ok: false, error: { key: 'Path of Building is switched off on My gear (Judge items with Path of Building). Switch it on to see your character sheet.' } };
     await pobEngine().ensureLoaded();
     const r = await pobEngine().searchNodes(String(query || ''), Number(limit) || 30);
-    return r && r.ok ? r : { ok: false, error: (r && r.error) || 'Path of Building could not search the tree' };
+    if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'Path of Building could not search the tree' };
+    // tell the page what each match actually does (max shield vs % vs recharge …)
+    const intent = require('./core/passive-intent');
+    r.nodes = (r.nodes || []).map((n) => ({ ...n, kinds: intent.classify(n.stats) }));
+    return r;
   } catch (err) {
     log('nodes: ' + (err.message || err));
     return { ok: false, error: { key: 'Path of Building could not search the passive tree: {0}', args: [err.message || String(err)] } };
