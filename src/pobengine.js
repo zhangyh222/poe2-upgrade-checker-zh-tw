@@ -26,6 +26,7 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
   const waiting = new Map();
   const operations = createOperationQueue();
   let buildXml = null; let buildInfo = null; let loading = null;
+  let readyInfo = null; // { version } from the engine's ready handshake
   let idleTimer = null;
   let lastError = null;
 
@@ -77,7 +78,7 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
           if (!line.startsWith('@@')) continue;
           let msg; try { msg = JSON.parse(line.slice(2)); } catch (_) { continue; }
           if (msg.ready === false) { lastError = String(msg.error || 'unknown error').split('\n').filter(Boolean).slice(0, 4).join(' | '); log('pob: Path of Building could not start: ' + lastError); clearTimeout(startTimer); reject(new Error('Path of Building could not start: ' + lastError)); continue; }
-          if (msg.ready) { started = true; clearTimeout(startTimer); log(`pob: engine ready (PoB ${msg.version || '?'}, ${Date.now() - t0} ms)`); resolve(msg); continue; }
+          if (msg.ready) { started = true; readyInfo = { version: msg.version || null }; clearTimeout(startTimer); log(`pob: engine ready (PoB ${msg.version || '?'}, ${Date.now() - t0} ms)`); resolve(msg); continue; }
           const w = waiting.get(msg.id);
           if (w) { waiting.delete(msg.id); clearTimeout(w.timer); w.resolve(msg); }
         }
@@ -240,8 +241,73 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     }, options);
   }
 
+  const engineVersion = () => (readyInfo && readyInfo.version) || null;
+
+  // Try several build documents against one engine, one after another, and put
+  // the active build back afterwards. Trials are not "transactions": each one
+  // loads a different XML, so the queue is held for the whole run.
+  //
+  // The restore is eager on purpose. A PoB build whose XML carries no ItemSet
+  // keeps the item set it already had, and `weaponset` flips that set on the
+  // build rather than on a copy - so "reload it lazily and it will be fine" is
+  // how a trial leaks its weapon set into the page the user is looking at.
+  // A failed trial, or a failed restore, leaves the engine unknown: stop it.
+  async function trialDocuments(docs, options = {}) {
+    if (!Array.isArray(docs) || !docs.length) throw new Error('No build documents to try.');
+    return operations.run(async () => {
+      const before = {
+        xml: buildXml, overrides: overrides.slice(), weaponSet,
+        // the set the engine is actually calculating on right now (0 = follow the build)
+        effectiveSet: weaponSet || (buildInfo && buildInfo.weaponSwap ? 2 : 1),
+      };
+      let result;
+      try {
+        const results = [];
+        for (const doc of docs) {
+          if (options.signal && options.signal.aborted) { const e = new Error('Calculation cancelled.'); e.name = 'AbortError'; throw e; }
+          if (!doc || typeof doc.xml !== 'string') throw new Error('Every trial needs a build document.');
+          setBuild(doc.xml, doc.overrides || []);
+          await ensureLoaded();
+          const wanted = doc.weaponSet === 2 ? 2 : 1;
+          const switched = await setWeaponSet(wanted);
+          if (!switched || !switched.ok) throw new Error(switched && switched.error ? switched.error : 'Path of Building could not switch the weapon set.');
+          results.push({ ok: true, sheet: await sheet() });
+        }
+        result = results;
+      } catch (err) {
+        buildInfo = null; infoGen = -1; stop();
+        throw err;
+      }
+      try {
+        await restore(before);
+      } catch (err) {
+        buildInfo = null; infoGen = -1; stop();
+        const failure = new Error('The build could not be restored after the trial: ' + (err && err.message ? err.message : String(err)));
+        failure.code = 'TRIAL_RESTORE_FAILED';
+        throw failure;
+      }
+      return result;
+    }, options);
+  }
+
+  // put the document, its overrides and the weapon set back, and prove it
+  async function restore(before) {
+    if (!before.xml) { buildXml = null; overrides = []; weaponSet = 0; gen++; buildInfo = null; infoGen = -1; return; }
+    setBuild(before.xml, before.overrides);
+    weaponSet = before.weaponSet;
+    await ensureLoaded();
+    const nowSet = buildInfo && buildInfo.weaponSwap ? 2 : 1;
+    if (nowSet !== before.effectiveSet) {
+      const switched = await setWeaponSet(before.effectiveSet);
+      if (!switched || !switched.ok) throw new Error(switched && switched.error ? switched.error : 'weapon set restore failed');
+    }
+    // keep "follow the build" behaviour for later loads, now that this one is back
+    if (!before.weaponSet) weaponSet = 0;
+  }
+
   return {
     available, start, stop, resetFailure, setBuild, transaction,
+    version: engineVersion, trialDocuments,
     loadBuild: (xml, over) => { setBuild(xml, over === undefined ? overrides : over); return transaction((engine) => engine.ensureLoaded()); },
     evalItems: (items) => transaction((engine) => engine.evalItems(items)),
     makeQuery: (opts) => transaction((engine) => engine.makeQuery(opts)),
