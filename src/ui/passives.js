@@ -42,6 +42,9 @@
   let searchInfo = new Map(); // id -> { cost, allocated } from the engine's search
   let path = null; // the node ids from something allocated to the picked node
   let pathCost = null;
+  let currentSet = 1; // which weapon set the page is calculated on
+  let onlySet = false; // hide nodes that only work with the other set
+  let lastResult = null; // the last engine answer, so the set filter needs no new call
   let filter = null; // a legend chip picked: highlight/zoom just those nodes
   let dragging = null;
 
@@ -380,7 +383,12 @@
       maxShield: 'max ES', esPercent: 'ES %', rechargeRate: 'recharge', rechargeDelay: 'delay',
       spirit: 'spirit', life: 'life', resistances: 'res',
     };
-    const rows = (result.nodes || []).slice(0, 12).map((n) => {
+    // a node that only works with the other weapon set is not a suggestion for this
+    // page; the filter is opt-in because seeing both is sometimes what you want
+    const all = result.nodes || [];
+    const shown = onlySet ? all.filter((n) => !n.weaponSet || n.weaponSet === currentSet) : all;
+    const total = onlySet ? shown.length : result.total;
+    const rows = shown.slice(0, 12).map((n) => {
       const cost = n.cost == null ? t('not connected') : (n.allocated ? t('already allocated') : t('{0} points away', n.cost));
       // what the node actually gives, so "energy shield" matches are not one lump
       const kinds = (n.kinds || []).map((k) => `<small class="kind">${esc(KIND_LABEL[k] || k)}</small>`).join('');
@@ -392,7 +400,7 @@
       ? `<span class="dim small"> → ${esc(result.translated.english)}${result.translated.dropped ? ` (${esc(t('ignored: {0}', result.translated.dropped))})` : ''}</span>`
       : '';
     box.innerHTML = rows
-      ? `<span class="dim small">${esc(t('{0} matches', result.total))}</span>${trans} ${rows}`
+      ? `<span class="dim small">${esc(onlySet ? t('{0} matches in weapon set {1}', total, currentSet) : t('{0} matches', total))}</span>${trans} ${rows}`
       : `<span class="dim small">${esc(t('Nothing matches that.'))}</span>`;
   }
 
@@ -404,7 +412,7 @@
     matches = new Set();
     searchInfo = new Map();
     path = null; pathCost = null; renderPathNote(); // a new search is a new question
-    if (!q) { renderResults(null); draw(); return; }
+    if (!q) { lastResult = null; renderResults(null); draw(); return; }
     matches = localMatches(q);
     renderResults(null);
     draw();
@@ -412,6 +420,7 @@
       const r = await window.api.searchNodes(q, 30);
       if (seq !== searchSeq) return; // a later keystroke wins
       if (r && r.ok) {
+        lastResult = r;
         matches = new Set((r.nodes || []).map((n) => n.id));
         searchInfo = new Map((r.nodes || []).map((n) => [n.id, n]));
         renderResults(r);
@@ -471,6 +480,7 @@
       }
       tree = d;
       sheet = sheetRes && sheetRes.sheet;
+      currentSet = sheet && sheet.weaponSwap ? 2 : 1;
       build();
       const treeSheet = (sheet && sheet.tree) || {};
       const asc = (treeSheet.nodes || []).filter((n) => n.asc).length;
@@ -527,6 +537,11 @@
   $('#passSearch').addEventListener('input', () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(runSearch, 220);
+  });
+  // toggling the set filter re-renders the same results, no new engine call
+  $('#passOnlySet').addEventListener('change', (ev) => {
+    onlySet = !!ev.target.checked;
+    if (lastResult) renderResults(lastResult); else draw();
   });
   $('#passSearch').addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter') return;
