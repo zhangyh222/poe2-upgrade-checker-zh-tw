@@ -1213,9 +1213,26 @@ local function affixTiers(req)
   if not source then return { ok = false, error = "no modifier data for " .. kind } end
   local filter = tostring(req.filter or ""):lower()
   local groups = {}
-  for id, mod in pairs(source) do
+  if kind == "Runes" then
+    -- runes are nested: rune name -> slot -> { text, ..., levelReq }
+    for name, slots in pairs(source) do
+      if type(slots) == "table" then
+        for slotName, entry in pairs(slots) do
+          local text = type(entry) == "table" and entry[1] or nil
+          if type(text) == "string" and text ~= "" then
+            local g = groups[name]
+            if not g then g = { group = name, type = "Rune", tiers = {} }; groups[name] = g end
+            g.tiers[#g.tiers + 1] = { id = name .. "|" .. tostring(slotName), affix = "", text = text, level = tonumber(entry.levelReq) or 1, bases = { tostring(slotName) } }
+          end
+        end
+      end
+    end
+  end
+  for id, mod in pairs((kind ~= "Runes") and source or {}) do
     local group = mod.group
-    if group and (mod.type == "Prefix" or mod.type == "Suffix") then
+    -- exclusive (unique-only) entries carry no Prefix/Suffix type: keep them, they
+    -- are still one tier each and players see the text on the item
+    if group and (mod.type == "Prefix" or mod.type == "Suffix" or mod.type == nil) then
       local text = mod[1] or ""
       if filter == "" or group:lower():find(filter, 1, true) or text:lower():find(filter, 1, true) then
         local g = groups[group]

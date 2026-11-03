@@ -53,7 +53,14 @@ IncreasedLife: T1 lvl80 +(200-214) | T2 lvl75 +(190-199) | T3 lvl70 +(175-189) |
 
 实测（导入 ranger-deadeye 后）：装备卡出现 26 个标签，如 `T1 Adds 1 to 109 Lightning Damage`、`T1 29% increased Attack Speed`、`T5 56% increased chance to Shock`、`T1 121% increased Evasion and Energy Shield`。
 
-**覆盖率**：三份构筑的 523 行物品文本里 157 行（30%）能对上 Item 词缀池。其余主要是：装备属性行（`Armour: …`、`Item Level: …`）、符文/附魔（在 `ModRunes` 池）、唯一物品专属文本（在 `ModItemExclusive` 池）。要全覆盖需要把这几类池也接进来，目前只做了 Item。
+**覆盖率**：接入四个池（Item / Runes / Exclusive / Desecrated，共 3,763 组）并去掉解析器加的来源标签（`(enchant)` 等）后，三份构筑里 407 行"像词缀的行"命中 296 行（**73%**）。
+
+剩下的 27% 主要是：
+- `Grants Skill: …` 这类"授技"行（不是数值词缀）；
+- 唯一物品的专属叙述句（不在 `ModItem` 池里，或在池里但文本带占位符）；
+- 复合/混合行（例如同时含两个数值段的特殊词缀）。
+
+这些**一律不显示标签**，而不是猜一个 Tier。
 
 ## 尚未完成
 

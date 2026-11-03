@@ -1407,13 +1407,24 @@ const pobLastTree = new Map();
 // The engine's mod pool is big (~600 KB for items), so it is loaded once per
 // session and kept in memory; matching an item line is then pure string work.
 let tierMatcher = null;
+// Item mods are the bulk; runes, exclusive (unique-only) and desecrated lines live
+// in their own pools, so all four are merged before matching or a rune line looks
+// like "unknown" when it is simply in another file.
+const TIER_POOLS = ['Item', 'Runes', 'Exclusive', 'Desecrated'];
 async function ensureTierMatcher() {
   if (tierMatcher) return tierMatcher;
-  const r = await pobEngine().affixTiers('Item');
-  if (!r || !r.ok) throw new Error((r && r.error) || 'the modifier pool could not be read');
   const { createMatcher } = require('./core/affix-match');
-  tierMatcher = createMatcher(r.groups);
-  log(`affix tiers: ${r.count} groups loaded`);
+  const groups = [];
+  const loaded = [];
+  for (const kind of TIER_POOLS) {
+    try {
+      const r = await pobEngine().affixTiers(kind);
+      if (r && r.ok) { groups.push(...r.groups); loaded.push(`${kind}:${r.count}`); }
+    } catch (err) { log(`affix tiers ${kind}: ${err.message || err}`); }
+  }
+  if (!groups.length) throw new Error('the modifier pool could not be read');
+  tierMatcher = createMatcher(groups);
+  log(`affix tiers loaded (${loaded.join(', ')})`);
   return tierMatcher;
 }
 ipcMain.handle('tiers:equipped', async () => {

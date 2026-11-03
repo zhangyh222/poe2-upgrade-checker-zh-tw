@@ -11,8 +11,12 @@
 
 const { band, positionInBand } = require('./mod-text');
 
+// the parser tags a line with where it came from ("(enchant)", "(implicit)"): that
+// is not part of the mod's shape and would stop it matching its own tier
+const SOURCE_TAG = /\s*\((?:enchant|implicit|rune|crafted|fractured|desecrated|mutated)\)\s*$/i;
+
 function normalize(text) {
-  return String(text == null ? '' : text)
+  return String(text == null ? '' : text).replace(SOURCE_TAG, '')
     // a roll is "(34-36)" or "35": both become one "#", and the parentheses go
     .replace(/-?\d+(?:\.\d+)?(?:\s*[-–]\s*-?\d+(?:\.\d+)?)?/g, '#')
     .replace(/[()]/g, '')

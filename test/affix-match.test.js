@@ -34,6 +34,12 @@ test('a roll outside every band is range-only, not a confident tier', () => {
   assert.equal(hit.position, null);
 });
 
+test('the parser\'s source tag is not part of the mod shape', () => {
+  const hit = matcher.match('+35 to Strength (enchant)');
+  assert.equal(hit.group, 'Strength');
+  assert.equal(hit.tier, 1);
+});
+
 test('an unknown line is null, not a guess', () => {
   assert.equal(matcher.match('12% increased Attack Speed'), null);
 });
