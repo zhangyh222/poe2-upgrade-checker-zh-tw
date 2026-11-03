@@ -40,7 +40,9 @@
     const out = [];
     for (const line of (slotInfo && slotInfo.lines) || []) {
       const c = choices.get(line.text);
-      if (!c || c.action === 'ignore' || !line.match) continue;
+      // "take it off" means the line is not searched for: what replaces it is a
+      // condition (e.g. cold resistance), not another copy of the same affix
+      if (!c || c.action === 'ignore' || c.action === 'replace' || !line.match) continue;
       out.push({ text: line.text, min: c.action === 'keep' ? firstNumber(line.text) : bandOf(line, c.tier) });
     }
     return out;
@@ -98,6 +100,7 @@
           <option value="keep"${choice.action === 'keep' ? ' selected' : ''}>${t('same roll or better')}</option>
           <option value="min"${choice.action === 'min' ? ' selected' : ''}>${t('tier only')}</option>
           <option value="ignore"${choice.action === 'ignore' ? ' selected' : ''}>${t('not required')}</option>
+          <option value="replace"${choice.action === 'replace' ? ' selected' : ''}>${t('take it off (use the conditions below)')}</option>
         </select>
       </div></div>`;
   }
@@ -143,6 +146,9 @@
         + (v ? statusTag(v.status) : '')
         + (fails.length ? `<small class="neg">${esc(fails.map((f) => t(METRIC_LABELS[f.metric] || f.metric)).join(', '))}</small>` : '')
         + (deltas ? `<small class="dim">${esc(deltas)}</small>` : '')
+        // only a candidate that actually passed can be worn: a failed or unchecked
+        // one must not look like a result the player can take
+        + (v && v.status === 'pass' ? `<button type="button" class="link" data-adopt="${esc(c.id)}">${t('Equip it')}</button>` : '')
         + `</div>`;
     }).join('');
     const resultsCard = `<div class="card-p gq-wide"><h3>${t('Candidates')}</h3>`
@@ -223,6 +229,18 @@
   });
 
   document.addEventListener('click', async (ev) => {
+    const adoptBtn = ev.target.closest ? ev.target.closest('[data-adopt]') : null;
+    if (adoptBtn) {
+      ev.stopPropagation();
+      const c = candidates.find((x) => x.id === adoptBtn.dataset.adopt);
+      if (!c) return;
+      // wearing it changes the build, so the next search starts from the new item
+      const ok = await window.api.equip(slot, c.text).catch(() => false);
+      workMsg = ok ? t('Equipped. The next search starts from it.') : t('That item could not be equipped.');
+      if (ok) { verified = null; candidates = []; }
+      await refresh();
+      return;
+    }
     const gq = ev.target.closest ? ev.target.closest('[data-gq]') : null;
     if (gq) {
       ev.stopPropagation();
