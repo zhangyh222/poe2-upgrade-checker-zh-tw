@@ -309,10 +309,16 @@
       const r = await window.api.gearQueryAdopt({ slot, text: c.text }).catch((err) => ({ ok: false, error: err.message }));
       working = false;
       if (r && r.ok) {
-        workMsg = t('Adopted as build version {0}. The next search starts from it.', r.revision);
+        const s = r.summary;
+        const bits = s && (s.dpsPct != null || s.ehpPct != null)
+          ? ` · ${t('Damage')} ${s.dpsPct == null ? '–' : `${s.dpsPct > 0 ? '+' : ''}${s.dpsPct}%`}, ${t('Effective HP')} ${s.ehpPct == null ? '–' : `${s.ehpPct > 0 ? '+' : ''}${s.ehpPct}%`}`
+          : '';
+        workMsg = t('Adopted as build version {0}. The next search starts from it.', r.revision) + bits;
         verified = []; candidates = [];
       } else {
-        workMsg = displayError((r && r.error) || 'adopt failed');
+        workMsg = (r && r.code === 'REVISION_CONFLICT')
+          ? t('The draft was stale: the build changed while you were looking. Search again.')
+          : displayError((r && (r.error || r.reason || r.code)) || 'adopt failed');
       }
       await refresh();
       return;

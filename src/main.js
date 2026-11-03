@@ -1693,7 +1693,15 @@ ipcMain.handle('gearquery:adopt', async (_e, payload) => {
     applyBuildDocument(adopted.document);
     setActiveDraftId(null);
     log(`gear query: adopted a candidate for ${slot} as revision ${adopted.revision}`);
-    return { ok: true, revision: adopted.revision, weaponSet: adopted.document.weaponSet, validation: adopted.validation || null };
+    // what the adoption actually changed, from the engine evidence the repository
+    // required: the player sees the same numbers the draft trial reported
+    const v = adopted.validation || null;
+    const delta = (v && v.delta) || null;
+    return {
+      ok: true, revision: adopted.revision, weaponSet: adopted.document.weaponSet,
+      validation: v,
+      summary: delta ? { dpsPct: delta.dpsPct, ehpPct: delta.ehpPct, status: (v && v.status) || null } : null,
+    };
   } catch (err) { return draftReply(err); }
 });
 
