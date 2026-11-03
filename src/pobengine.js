@@ -344,6 +344,42 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
     }, options);
   }
 
+  // Allocate passive nodes into a build document and hand the result back as XML.
+  // Same shape as editDocument: the page's build is put back afterwards.
+  async function allocatePlan(doc, ids, options = {}) {
+    if (!doc || typeof doc.xml !== 'string') throw new Error('A build document is required.');
+    if (!Array.isArray(ids) || !ids.length) throw new Error('No passive nodes to allocate.');
+    return operations.run(async () => {
+      const before = {
+        xml: buildXml, overrides: overrides.slice(), weaponSet,
+        effectiveSet: weaponSet || (buildInfo && buildInfo.weaponSwap ? 2 : 1),
+      };
+      let result;
+      try {
+        setBuild(doc.xml, doc.overrides || []);
+        await ensureLoaded();
+        const wanted = doc.weaponSet === 2 ? 2 : 1;
+        const switched = await setWeaponSet(wanted);
+        if (!switched || !switched.ok) throw new Error(switched && switched.error ? switched.error : 'Path of Building could not switch the weapon set.');
+        const r = await request({ cmd: 'allocatenodes', nodes: ids }, 120000);
+        if (!r.ok) throw new Error(r.error || 'Path of Building could not allocate those nodes.');
+        result = { xml: r.xml, added: r.added };
+      } catch (err) {
+        buildInfo = null; infoGen = -1; stop();
+        throw err;
+      }
+      try {
+        await restore(before);
+      } catch (err) {
+        buildInfo = null; infoGen = -1; stop();
+        const failure = new Error('The build could not be restored after the allocation: ' + (err && err.message ? err.message : String(err)));
+        failure.code = 'TRIAL_RESTORE_FAILED';
+        throw failure;
+      }
+      return result;
+    }, options);
+  }
+
   // put the document, its overrides and the weapon set back, and prove it
   async function restore(before) {
     if (!before.xml) { buildXml = null; overrides = []; weaponSet = 0; gen++; buildInfo = null; infoGen = -1; return; }
@@ -361,7 +397,7 @@ function createEngine({ log = () => {}, appPath, resourcesPath, packaged }) {
 
   return {
     available, start, stop, resetFailure, setBuild, transaction,
-    version: engineVersion, trialDocuments, editDocument,
+    version: engineVersion, trialDocuments, editDocument, allocatePlan,
     loadBuild: (xml, over) => { setBuild(xml, over === undefined ? overrides : over); return transaction((engine) => engine.ensureLoaded()); },
     evalItems: (items) => transaction((engine) => engine.evalItems(items)),
     // passive nodes matching a phrase, with the points they cost from what is allocated

@@ -1380,10 +1380,39 @@ local function nodePath(req)
   return { ok = true, cost = cost[target], path = path }
 end
 
+-- Allocate a list of passive node ids (a whole drawn route), the same way Path of
+-- Building's own import does: mark the nodes, rebuild the tree's dependency graph,
+-- recalculate, then hand the build back as XML.
+local saveXml -- defined below; allocation needs it before that point
+local function allocateNodes(req)
+  local ids = req.nodes
+  if type(ids) ~= "table" or #ids == 0 then return { ok = false, error = "no nodes to allocate" } end
+  local spec = build.spec
+  if not spec or not spec.nodes then return { ok = false, error = "Path of Building hasn't loaded a passive tree." } end
+  local added = 0
+  for _, raw in ipairs(ids) do
+    local id = tonumber(raw)
+    local node = id and spec.nodes[id]
+    if node and not spec.allocNodes[id] then
+      node.alloc = true
+      node.allocMode = 0
+      spec.allocNodes[id] = node
+      added = added + 1
+    end
+  end
+  spec:BuildAllDependsAndPaths()
+  build.buildFlag = true
+  build.calcsTab:BuildOutput()
+  local r = saveXml()
+  r.added = added
+  r.ok = r.ok ~= false
+  return r
+end
+
 -- The build as Path of Building itself would export it: the same tables its Save
 -- methods fill, composed by its own XML writer. This is what makes an edit (e.g. a
 -- skill's weapon sets) survive as a build again, instead of living only in memory.
-local function saveXml()
+saveXml = function()
   -- SaveDB is what "Save as" uses: it writes the Build section plus every tab
   -- (items, skills, tree, config, calcs) through each tab's own Save. The file
   -- name is only used for its error message, which this bridge replaces.
@@ -1478,6 +1507,8 @@ while true do
       return searchNodes(req)
     elseif req.cmd == "nodepath" then
       return nodePath(req)
+    elseif req.cmd == "allocatenodes" then
+      return allocateNodes(req)
     elseif req.cmd == "tiers" then
       return affixTiers(req)
     elseif req.cmd == "setskill" then

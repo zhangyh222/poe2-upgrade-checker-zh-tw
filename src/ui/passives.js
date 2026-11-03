@@ -420,12 +420,16 @@
     } catch (_) { /* keep the local matches */ }
   }
 
+  let pathMsg = '';
   function renderPathNote() {
     const el = document.querySelector('#passPath');
     if (!el) return;
     if (!path || !path.length) { el.innerHTML = ''; return; }
     const names = path.map((p) => esc(gn(p.name) || p.name)).join(' → ');
-    el.innerHTML = `<span class="dim small">${esc(t('Path ({0} points):', pathCost == null ? '?' : pathCost))}</span> ${names}`;
+    const canAdd = path.some((p) => !p.allocated);
+    el.innerHTML = `<span class="dim small">${esc(t('Path ({0} points):', pathCost == null ? '?' : pathCost))}</span> ${names}`
+      + (canAdd ? ` <button type="button" class="link" data-pathdraft>${esc(t('Add this route to a draft'))}</button>` : '')
+      + (pathMsg ? ` <span class="small">${esc(pathMsg)}</span>` : '');
   }
 
   // the route is fetched when a node is picked, not for every search hit: it is a
@@ -532,6 +536,22 @@
       if (first) focusNode(first);
     });
   });
+  // a drawn route can be put into a draft, where it is calculated and adopted like
+  // any other change: the build keeps a version of what it was before
+  document.addEventListener('click', async (ev) => {
+    const b = ev.target.closest ? ev.target.closest('[data-pathdraft]') : null;
+    if (!b || !path || !path.length) return;
+    ev.stopPropagation();
+    b.disabled = true;
+    pathMsg = t('Adding…');
+    renderPathNote();
+    const r = await window.api.draftPath(path.map((p) => p.id)).catch((err) => ({ ok: false, error: err.message }));
+    pathMsg = r && r.ok
+      ? t('Added to the draft as revision {0}; calculate and adopt it on the Builds page.', r.draft.revision)
+      : displayError((r && r.error) || 'could not add to the draft');
+    renderPathNote();
+  });
+
   // clicking a match centres that node (the nearest ones are listed first)
   $('#passResults').addEventListener('click', (ev) => {
     const el = ev.target.closest('[data-node]');

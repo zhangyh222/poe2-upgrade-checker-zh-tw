@@ -1647,6 +1647,23 @@ ipcMain.handle('gearquery:more', async (_e, payload) => {
   }
 });
 
+// A drawn passive route goes into a draft, not into the build: the player can then
+// calculate it and adopt it like any other change, and the build keeps a version.
+ipcMain.handle('drafts:path', async (_e, ids) => {
+  try {
+    if (!Array.isArray(ids) || !ids.length) return { ok: false, error: { key: 'Nothing to add to the draft.', args: [] } };
+    const base = await syncBuildDocument();
+    if (!base) return { ok: false, code: 'BUILD_NOT_FOUND', error: { key: DRAFT_ERRORS.BUILD_NOT_FOUND, args: [] } };
+    const characterId = store.data.activeProfile || 'main';
+    let draft = activeDraftId() ? await buildRepo().getDraft(activeDraftId()) : null;
+    if (!draft || draft.status !== 'editing') { draft = await draftService().start(characterId); setActiveDraftId(draft.id); }
+    const out = await pobEngine().allocatePlan(draft.document, ids.map(Number));
+    const updated = await buildRepo().updateDraft(draft.id, draft.revision, { ...draft.document, xml: out.xml });
+    log(`draft: added ${out.added} passive node(s) as revision ${updated.revision}`);
+    return { ok: true, draft: updated, added: out.added };
+  } catch (err) { return draftReply(err); }
+});
+
 // Adopting a candidate goes through a draft, not straight into the character: the
 // build gets a new version, Path of Building has to agree, and the version it
 // replaced stays in history. Equipping directly would change the build with no

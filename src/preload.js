@@ -71,6 +71,8 @@ contextBridge.exposeInMainWorld('api', {
   gearQueryVerify: (payload) => ipcRenderer.invoke('gearquery:verify', payload),
   // adopting a candidate goes through a draft + a new build version, not a bare equip
   gearQueryAdopt: (payload) => ipcRenderer.invoke('gearquery:adopt', payload),
+  // put a drawn passive route into the draft (then calculate/adopt it there)
+  draftPath: (ids) => ipcRenderer.invoke('drafts:path', ids),
   // "must still be true after the swap" conditions: global, slot (weapon slots
   // also carry a weapon set) and the temporary layer the caller passes in
   guardsGet: (slotName) => ipcRenderer.invoke('guards:get', slotName),
