@@ -453,7 +453,9 @@
     matches = new Set();
     searchInfo = new Map();
     path = null; pathCost = null; renderPathNote(); // a new search is a new question
-    if (!q) { lastResult = null; renderResults(null); draw(); return; }
+    // clearing the box also clears what the search had picked out: the white ring
+    // around a node nobody is looking at any more reads as a stuck selection
+    if (!q) { lastResult = null; draftSel = null; renderResults(null); renderPathNote(); draw(); return; }
     matches = localMatches(q);
     const localList = {
       nodes: [...matches].map((id) => {
