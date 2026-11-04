@@ -420,8 +420,14 @@
     const rows = shown.slice(0, 40).map((n) => {
       const cost = n.cost == null ? t('not connected') : (n.allocated ? t('already allocated') : t('{0} points away', n.cost));
       const kinds = (n.kinds || []).map((k) => `<small class="kind">${esc(KIND_LABEL[k] || k)}</small>`).join(' ');
+      // what the node actually gives, translated the same way the tooltip is: a list
+      // of names cannot be told apart without it
+      const stats = (n.stats || []).filter((x) => typeof x === 'string' && x.trim()).slice(0, 3)
+        .map((x) => `<div class="pr-stat">${esc(gt(x))}</div>`).join('');
+      const more = (n.stats || []).length > 3 ? `<div class="pr-stat dim">+${(n.stats || []).length - 3} ${esc(t('more'))}</div>` : '';
       return `<button type="button" class="pass-row${n.allocated ? ' on' : ''}" data-node="${n.id}">`
-        + `<span class="pr-name">${esc(gn(n.name) || n.name)}</span>`
+        + `<span class="pr-main"><span class="pr-name">${esc(gn(n.name) || n.name)}</span>`
+        + (stats ? `<span class="pr-stats">${stats}${more}</span>` : '') + `</span>`
         + `<span class="pr-kinds">${kinds}</span>`
         + `<span class="pr-cost">${esc(cost)}</span></button>`;
     }).join('');

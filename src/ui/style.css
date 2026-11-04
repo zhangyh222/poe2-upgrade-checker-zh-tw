@@ -698,3 +698,9 @@ body.panelwin { user-select: none; overflow-y: auto; }
 .pr-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pr-kinds .kind { margin-right: 4px; }
 .pr-cost { color: var(--ash); font-size: 12px; white-space: nowrap; }
+/* the effect of each node, under its name in the results list */
+.pass-row { align-items: start; }
+.pr-main { display: flex; flex-direction: column; min-width: 0; }
+.pr-stats { display: block; margin-top: 1px; }
+.pr-stat { font-size: 12px; line-height: 1.45; color: var(--ash); }
+.pr-kinds, .pr-cost { padding-top: 1px; }
