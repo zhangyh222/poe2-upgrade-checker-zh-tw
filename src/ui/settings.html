@@ -113,12 +113,18 @@
           <label class="dim small"><input type="checkbox" id="passOnlySet"> <span data-i18n="this weapon set only">this weapon set only</span></label>
           <span class="dim small" data-i18n="Scroll to zoom, drag to move">Scroll to zoom, drag to move</span>
         </div>
-        <div class="pass-results" id="passResults"></div>
-        <div class="pass-path" id="passPath"></div>
-        <div class="pass-legend" id="passLegend"></div>
-        <div class="pass-wrap" id="passWrap">
-          <canvas id="passCanvas"></canvas>
-          <div class="pass-tip hidden" id="passTip"></div>
+        <div class="pass-body">
+          <div class="pass-side">
+            <div class="pass-results" id="passResults"></div>
+            <div class="pass-path" id="passPath"></div>
+          </div>
+          <div class="pass-main">
+            <div class="pass-legend" id="passLegend"></div>
+            <div class="pass-wrap" id="passWrap">
+              <canvas id="passCanvas"></canvas>
+              <div class="pass-tip hidden" id="passTip"></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

@@ -704,3 +704,13 @@ body.panelwin { user-select: none; overflow-y: auto; }
 .pr-stats { display: block; margin-top: 1px; }
 .pr-stat { font-size: 12px; line-height: 1.45; color: var(--ash); }
 .pr-kinds, .pr-cost { padding-top: 1px; }
+
+/* ---------- passives: results on the left, the tree on the right ---------- */
+.pass-body { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 12px; align-items: start; }
+.pass-side { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.pass-main { min-width: 0; }
+.pass-side .pass-list { max-height: min(58vh, 520px); }
+.pass-side .pass-path:empty { display: none; }
+@media (max-width: 1100px) {
+  .pass-body { grid-template-columns: minmax(0, 1fr); }
+}
