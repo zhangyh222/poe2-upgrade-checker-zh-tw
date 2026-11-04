@@ -185,7 +185,13 @@
         .map((g) => `${esc(t(METRIC_LABELS[g.metric] || g.metric))} ${fmtDelta(g.delta)}`).join(' · ') : '';
       // the price is the cheapest listing; say how many others share the item
       const others = c.listings > 1 ? ` <small class="dim">×${c.listings}</small>` : '';
-      return `<div class="row gq-candidate"><span class="grow">${esc(gn(c.name))}</span>`
+      // what the item actually gives, in the interface language: a name and a price
+      // is not enough to decide whether a listing is worth a trial
+      const itemLines = Array.isArray(c.lines) ? c.lines.slice(0, 10) : [];
+      const mods = itemLines.length
+        ? `<div class="gq-mods">${itemLines.map((l) => `<div>${esc(shown(l.text))}</div>`).join('')}</div>`
+        : '';
+      return `<div class="gq-cand-wrap"><div class="row gq-candidate"><span class="grow">${esc(gn(c.name))}</span>`
         + `<small class="dim">${esc(c.priceText || '')}</small>${others}`
         + (v ? statusTag(v.status) : '')
         + (fails.length ? `<small class="neg">${esc(fails.map((f) => t(METRIC_LABELS[f.metric] || f.metric)).join(', '))}</small>` : '')
@@ -194,7 +200,7 @@
         // only a candidate that actually passed can be worn: a failed or unchecked
         // one must not look like a result the player can take
         + (v && v.status === 'pass' ? `<button type="button" class="link" data-adopt="${esc(c.id)}">${t('Equip it')}</button>` : '')
-        + `</div>`;
+        + `</div>${mods}</div>`;
     }).join('');
     const moreLeft = searchCtx && searchCtx.from < searchCtx.ids.length;
     const unverifiedLeft = candidates.filter((c) => !verified.some((v) => v.id === c.id)).length;

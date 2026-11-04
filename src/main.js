@@ -1606,7 +1606,12 @@ ipcMain.handle('gearquery:search', async (_e, payload) => {
     for (const x of raw) {
       const s = listingLib.summarise(x, item.itemClass, rates);
       if (!s || !s.item) continue;
-      candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
+      const rawText = s.item.raw || s.item.listingText || '';
+      // the row has to say what the item actually gives: a name and a price is not
+      // enough to decide whether to buy it
+      const parsed = rawText ? parseItem(rawText) : null;
+      const lines = parsed && Array.isArray(parsed.lines) ? parsed.lines.filter((l) => l && l.text).map((l) => ({ text: l.text })).slice(0, 10) : [];
+      candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: rawText, lines, priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
     }
     log(`gear query: ${candidates.length} candidates for ${slot} (${picks.length} affixes)`);
     // the ids stay on the client so "more" costs no extra search (the trade site
@@ -1634,7 +1639,12 @@ ipcMain.handle('gearquery:more', async (_e, payload) => {
     for (const x of raw) {
       const s = listingLib.summarise(x, item && item.itemClass, rates);
       if (!s || !s.item) continue;
-      candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: s.item.raw || s.item.listingText || '', priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
+      const rawText = s.item.raw || s.item.listingText || '';
+      // the row has to say what the item actually gives: a name and a price is not
+      // enough to decide whether to buy it
+      const parsed = rawText ? parseItem(rawText) : null;
+      const lines = parsed && Array.isArray(parsed.lines) ? parsed.lines.filter((l) => l && l.text).map((l) => ({ text: l.text })).slice(0, 10) : [];
+      candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: rawText, lines, priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
     }
     return { ok: true, candidates: dedupeCandidates(candidates), done: start + want >= ids.length };
   } catch (err) {
