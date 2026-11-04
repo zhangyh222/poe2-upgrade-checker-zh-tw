@@ -714,3 +714,8 @@ body.panelwin { user-select: none; overflow-y: auto; }
 @media (max-width: 1100px) {
   .pass-body { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- the line colours under the tree ---------- */
+.pass-linelegend { display: flex; flex-wrap: wrap; gap: 14px; margin: 9px 0 2px; font-size: 12px; color: var(--ash, #8a8177); }
+.pl-item { display: inline-flex; align-items: center; gap: 6px; }
+.pl-line { display: inline-block; width: 24px; height: 0; border-top: 2px solid var(--c, #343029); }
