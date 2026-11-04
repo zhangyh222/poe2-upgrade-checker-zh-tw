@@ -453,5 +453,8 @@
   if (tab) tab.addEventListener('click', () => { setTimeout(() => { open().catch(() => {}); }, 0); });
   if (window.api.onChanged) window.api.onChanged(() => { if (document.querySelector('#tab-gearquery.active')) refresh(); });
   if (document.querySelector('#tab-gearquery.active')) setTimeout(() => { open().catch(() => {}); }, 0);
+  // The panel renders translated affix text (window.gdText), so it has to redraw when the
+  // language changes: without this it keeps the text from the language it was opened in.
+  if (window.i18n && window.i18n.onChange) window.i18n.onChange(() => { if (document.querySelector('#tab-gearquery.active')) render(); });
   window.renderGearQuery = refresh;
 })();
