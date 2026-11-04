@@ -43,3 +43,19 @@ test('the glossary matches the zh-TW dictionary the app ships', () => {
   const dict = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.deepEqual(verifyGlossary(dict), [], 'every Chinese form must appear in the game dictionary');
 });
+
+// a phrase the glossary does not list still has to reach the tree: the game
+// dictionary says which English words it appears in
+test('an unlisted Chinese phrase falls back to the dictionary instead of dead-ending', () => {
+  const dict = require('../src/data/zh-tw.json');
+  const { hintsFromDict } = require('../src/core/zh-query');
+  const hints = hintsFromDict('護體', dict);
+  assert.ok(hints.length > 0, 'expected at least one English hint');
+  assert.ok(hints.some((h) => h === 'fortification' || h === 'fortified'), JSON.stringify(hints.slice(0, 5)));
+});
+
+test('compensation is a word the glossary knows', () => {
+  const { translate } = require('../src/core/zh-query');
+  assert.equal(translate('补偿').english, 'compensated');
+  assert.equal(translate('補償').english, 'compensated');
+});

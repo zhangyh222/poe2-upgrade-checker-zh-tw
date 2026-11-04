@@ -947,6 +947,17 @@ ipcMain.handle('setting:set', (_e, key, value) => {
 // Path of Building or trade site text. Built by tools/make-zh-tw-data.js, and the area names
 // ("Act 1:Ogham Manor" quest sources) by tools/make-area-data.js.
 let gameDictCache;
+// the catalog on its own, for callers that only need the mods (e.g. searching)
+function zhGameDictShallow() {
+  if (gameDictCache !== undefined) return gameDictCache;
+  try {
+    gameDictCache = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'zh-tw.json'), 'utf8'));
+  } catch (err) {
+    log('zh-TW game data: ' + err.message);
+    gameDictCache = null;
+  }
+  return gameDictCache;
+}
 ipcMain.handle('i18n:gamedict', () => {
   if (gameDictCache !== undefined) return gameDictCache;
   try {
@@ -1868,16 +1879,38 @@ ipcMain.handle('nodes:search', async (_e, query, limit) => {
     const zh = require('./core/zh-query');
     let term = String(query || '');
     let translated = null;
+    let hints = [];
     if (zh.hasChinese(term)) {
       translated = zh.translate(term);
+      // the glossary is small: when it misses, ask the game dictionary which English
+      // words the phrase appears in, so a word like 補償 does not dead-end
+      const dict = zhGameDictShallow();
+      hints = dict ? zh.hintsFromDict(term, dict) : [];
       if (!translated.english) {
-        return { ok: false, error: { key: 'No English term matches "{0}" yet.', args: [term] }, translated };
+        if (!hints.length) {
+          return { ok: false, error: { key: 'No English term matches "{0}" yet.', args: [term] }, translated };
+        }
+        translated = { ...translated, english: hints[0], fromDictionary: true, candidates: hints.slice(0, 4) };
       }
       term = translated.english;
     }
     await pobEngine().ensureLoaded();
-    const r = await pobEngine().searchNodes(term, Number(limit) || 30);
+    let r = await pobEngine().searchNodes(term, Number(limit) || 30);
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || 'Path of Building could not search the tree' };
+    // the first English word offered by the dictionary may not be the one the tree
+    // uses; try the next few before telling the player nothing matches
+    if (!r.total && hints.length > 1) {
+      for (const hint of hints.slice(1, 4)) {
+        if (hint === term) continue;
+        const alt = await pobEngine().searchNodes(hint, Number(limit) || 30);
+        if (alt && alt.ok && alt.total) {
+          r = alt;
+          term = hint;
+          if (translated) translated.english = hint;
+          break;
+        }
+      }
+    }
     // tell the page what each match actually does (max shield vs % vs recharge …)
     const intent = require('./core/passive-intent');
     r.nodes = (r.nodes || []).map((n) => ({ ...n, kinds: intent.classify(n.stats) }));
