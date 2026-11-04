@@ -1608,9 +1608,13 @@ ipcMain.handle('gearquery:search', async (_e, payload) => {
       if (!s || !s.item) continue;
       const rawText = s.item.raw || s.item.listingText || '';
       // the row has to say what the item actually gives: a name and a price is not
-      // enough to decide whether to buy it
-      const parsed = rawText ? parseItem(rawText) : null;
-      const lines = parsed && Array.isArray(parsed.lines) ? parsed.lines.filter((l) => l && l.text).map((l) => ({ text: l.text })).slice(0, 10) : [];
+      // enough to decide whether to buy it. The listing is already parsed, so the
+      // mod lines come straight from it; header/property lines are not mods.
+      const PROPERTY_LINE = /^(Item Class|Rarity|Item Level|Quality|Sockets|LevelReq|Requires|Armour|Evasion Rating|Energy Shield|Ward|Spirit|Stack Size|Charges|Corrupted|Unidentified|Mirrored|Unmodifiable)/i;
+      const lines = (Array.isArray(s.item.lines) ? s.item.lines : [])
+        .filter((l) => l && typeof l.text === 'string' && l.text.trim() && !PROPERTY_LINE.test(l.text))
+        .slice(0, 10)
+        .map((l) => ({ text: l.text }));
       candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: rawText, lines, priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
     }
     log(`gear query: ${candidates.length} candidates for ${slot} (${picks.length} affixes)`);
@@ -1641,9 +1645,13 @@ ipcMain.handle('gearquery:more', async (_e, payload) => {
       if (!s || !s.item) continue;
       const rawText = s.item.raw || s.item.listingText || '';
       // the row has to say what the item actually gives: a name and a price is not
-      // enough to decide whether to buy it
-      const parsed = rawText ? parseItem(rawText) : null;
-      const lines = parsed && Array.isArray(parsed.lines) ? parsed.lines.filter((l) => l && l.text).map((l) => ({ text: l.text })).slice(0, 10) : [];
+      // enough to decide whether to buy it. The listing is already parsed, so the
+      // mod lines come straight from it; header/property lines are not mods.
+      const PROPERTY_LINE = /^(Item Class|Rarity|Item Level|Quality|Sockets|LevelReq|Requires|Armour|Evasion Rating|Energy Shield|Ward|Spirit|Stack Size|Charges|Corrupted|Unidentified|Mirrored|Unmodifiable)/i;
+      const lines = (Array.isArray(s.item.lines) ? s.item.lines : [])
+        .filter((l) => l && typeof l.text === 'string' && l.text.trim() && !PROPERTY_LINE.test(l.text))
+        .slice(0, 10)
+        .map((l) => ({ text: l.text }));
       candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: rawText, lines, priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
     }
     return { ok: true, candidates: dedupeCandidates(candidates), done: start + want >= ids.length };

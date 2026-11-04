@@ -669,3 +669,14 @@ body.panelwin { user-select: none; overflow-y: auto; }
 .gq-cand-wrap { margin: 3px 0 2px; }
 .gq-mods { margin: 2px 0 6px 6px; padding-left: 8px; border-left: 2px solid var(--iron); }
 .gq-mods div { font-size: 12px; line-height: 1.5; color: var(--ash); }
+
+/* ---------- gear query: one affix per row, never spilling into the next column ---------- */
+.gq-line { margin: 5px 0; min-width: 0; }
+.gq-line > .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gq-line > .row > .grow { min-width: 0; overflow-wrap: anywhere; }
+.gq-line .tier { flex: none; font-size: 12px; color: var(--gold, #c9a463); border: 1px solid var(--iron, #3a332c); padding: 0 4px; }
+.gq-line .gq-slider { gap: 6px; }
+.gq-line .gq-slider input[type="range"] { flex: 1 1 80px; min-width: 60px; }
+.gq-name { font-weight: 600; margin: 4px 0 6px; }
+.gq-find { gap: 6px; flex-wrap: wrap; }
+.gq-find .lg { cursor: pointer; border: 1px solid var(--iron, #3a332c); padding: 1px 6px; }

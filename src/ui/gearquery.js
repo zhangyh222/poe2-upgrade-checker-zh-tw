@@ -110,8 +110,7 @@
     const maxTier = line.tiers ? line.tiers.length : m.tier;
     return `<div class="gq-line">
       <div class="row"><span class="grow">${esc(shown(line.text))}</span>
-        <span class="tier${m.confidence === 'range-only' ? ' dim' : ''}">T${m.tier}</span>
-        <small class="dim" title="${esc(m.group)}">${esc(shown(m.group))}</small></div>
+        <span class="tier${m.confidence === 'range-only' ? ' dim' : ''}" title="${esc(m.group)}">T${m.tier}</span></div>
       <div class="row gq-slider">
         <label class="dim small">${t('keep at least')} <b data-gq-tier>${t('T{0}', choice.tier)}</b></label>
         <input type="range" min="1" max="${Math.max(1, maxTier)}" value="${choice.tier}" data-gq-slider="${esc(line.text)}"/>
@@ -123,6 +122,15 @@
           <option value="replace"${choice.action === 'replace' ? ' selected' : ''}>${t('take it off (use the conditions below)')}</option>
         </select>
       </div></div>`;
+  }
+
+  // matches for "add a requirement" live in their own node: the list is refreshed
+  // as you type, without redrawing the input you are typing into
+  function findListHtml() {
+    if (findGroups.length) {
+      return findGroups.map((g) => `<span class="lg" data-addgroup="${esc(g.group)}" title="${esc(g.group)}" role="button" tabindex="0">${esc(shown(g.label || g.group))} <small class="dim">${g.tierCount}</small></span>`).join('');
+    }
+    return findMsg ? `<span class="dim small">${esc(findMsg)}</span>` : '';
   }
 
   function render() {
@@ -142,7 +150,7 @@
       + `<h4 class="small">${t('Additional requirements')}</h4>`
       + `<div class="row"><input id="gqFind" class="text grow" placeholder="${esc(t('Find an affix…'))}"/>`
       + `<button type="button" class="link" data-gq="findaffix">${t('Search')}</button></div>`
-      + (findGroups.length ? `<div class="row gq-find">${findGroups.map((g) => `<span class="lg" data-addgroup="${esc(g.group)}" title="${esc(g.group)}" role="button" tabindex="0">${esc(shown(g.label || g.group))} <small class="dim">${g.tierCount}</small></span>`).join('')}</div>` : (findMsg ? `<div class="dim small">${esc(findMsg)}</div>` : ''))
+      + `<div class="row gq-find" id="gqFindList">${findListHtml()}</div>`
       + extras.map((x, i) => `<div class="row gq-extra"><span class="grow" title="${esc(x.group)}">${esc(shown(x.label || x.group))}</span>`
         + `<label class="dim small">${t('at least')} <b>${t('T{0}', x.tier)}</b></label>`
         + `<input type="range" min="1" max="${Math.max(1, x.tierCount)}" value="${x.tier}" data-extra-slider="${i}"/>`
@@ -351,12 +359,7 @@
       ev.stopPropagation();
       if (working) return;
       if (gq.dataset.gq === 'findaffix') {
-        const q = (document.querySelector('#gqFind') || {}).value || '';
-        if (String(q).trim().length < 2) { findMsg = t('Type at least two characters.'); render(); return; }
-        const r = await window.api.tiersGroups(q).catch((err) => ({ ok: false, error: err.message }));
-        if (!r || !r.ok) { findGroups = []; findMsg = displayError((r && r.error) || 'search failed'); }
-        else { findGroups = r.groups || []; findMsg = findGroups.length ? '' : t('No affix matches that.'); }
-        render();
+        await findAffixes((document.querySelector('#gqFind') || {}).value || '');
         return;
       }
       if (gq.dataset.gq === 'search') {
@@ -452,6 +455,37 @@
       message = { ok: false, text: displayError(err && (err.message || err)) };
       render();
     }
+  });
+
+  // type two characters and the affix list appears; the Search button stays for
+  // people who prefer it, and Enter runs the same query
+  let findTimer = null;
+  async function findAffixes(q) {
+    const term = String(q || '').trim();
+    if (term.length < 2) {
+      findGroups = [];
+      findMsg = term.length ? t('Type at least two characters.') : '';
+      const list = document.querySelector('#gqFindList');
+      if (list) list.innerHTML = findListHtml();
+      return;
+    }
+    const r = await window.api.tiersGroups(term).catch((err) => ({ ok: false, error: err.message }));
+    if (!r || !r.ok) { findGroups = []; findMsg = displayError((r && r.error) || 'search failed'); }
+    else { findGroups = r.groups || []; findMsg = findGroups.length ? '' : t('No affix matches that.'); }
+    const list = document.querySelector('#gqFindList');
+    if (list) list.innerHTML = findListHtml(); else render();
+  }
+  document.addEventListener('input', (ev) => {
+    const el = ev.target;
+    if (!el || el.id !== 'gqFind') return;
+    clearTimeout(findTimer);
+    findTimer = setTimeout(() => { findAffixes(el.value).catch(() => {}); }, 250);
+  });
+  document.addEventListener('keydown', (ev) => {
+    const el = ev.target;
+    if (!el || el.id !== 'gqFind' || ev.key !== 'Enter') return;
+    clearTimeout(findTimer);
+    findAffixes(el.value).catch(() => {});
   });
 
   // the page is lazy: load when its tab is opened (and after a character switch)
