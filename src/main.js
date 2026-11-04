@@ -251,6 +251,9 @@ async function pobJudge(list) {
   });
   const per = list.map(() => []);
   const errs = list.map(() => null);
+  // the before/after the engine returned is what the condition chain needs; keep it
+  // per listing so the results window can be judged by the same rules as the panel
+  const evidence = list.map(() => null);
   if (req.length) {
     const res = await pobContext.run(context, () => pobEngine().evalItems(req));
     res.forEach((r, k) => {
@@ -259,6 +262,7 @@ async function pobJudge(list) {
         // a jewel that's already in one of your sockets is only compared with itself there
         const nm = list[idx[k][0]].item && list[idx[k][0]].item.name;
         const own = r.multi.filter((m) => nm && m.replacing === nm);
+        if (!evidence[idx[k][0]] && (own[0] || r.multi[0])) evidence[idx[k][0]] = { before: r.before, after: (own[0] || r.multi[0]).after };
         for (const m of (own.length ? own : r.multi)) {
           const j = pobVerdict.judge(r.before, m.after, weights);
           if (j) { j.slot = idx[k][1]; j.socket = { slot: m.slot, label: m.label, replacing: m.replacing || null }; per[idx[k][0]].push(j); }
@@ -267,9 +271,11 @@ async function pobJudge(list) {
       }
       const j = pobVerdict.judge(r.before, r.after, weights);
       if (j) { j.slot = idx[k][1]; per[idx[k][0]].push(j); }
+      if (!evidence[idx[k][0]]) evidence[idx[k][0]] = { before: r.before, after: r.after };
     });
   }
   const out = per.map((arr) => pobVerdict.best(arr));
+  out.forEach((j, i) => { if (j && evidence[i]) Object.defineProperty(j, 'evidence', { value: evidence[i], enumerable: false }); });
   out.errors = errs; // why PoB couldn't judge an item, when it said
   out.context = context;
   return out;
@@ -2385,11 +2391,29 @@ async function pobListings(list) {
   try {
     const t0 = Date.now();
     const js = await pobJudge(fresh.map((x) => ({ item: x.item, slot: x.compare.targetSlot })));
-    fresh.forEach((x, i) => {
-      if (!js[i]) return;
-      applyPob(x.compare, js[i]);
-      x.valuePerDiv = x.priceEx && js[i].score > 0 ? (js[i].score / Math.max(x.priceEx, 1)) * (store.settings.divineRate || 1) : null;
-    });
+    const verification = require('./core/candidate-verification');
+    const profileId = store.data.activeProfile || 'main';
+    const own = guardsFor(profileId);
+    for (let i = 0; i < fresh.length; i += 1) {
+      const x = fresh[i];
+      const judged = js[i];
+      // the condition layers the panel uses, applied to the same engine evidence:
+      // a listing the rules cannot judge is "unverified" here too, not a pass
+      const slotKey = (x.compare && x.compare.targetSlot) || (x.item && x.item.slot) || '';
+      const merged = guardLib.mergeGuards({ global: own.global || [], slot: (own.slots || {})[slotKey] || [], slotName: slotKey });
+      const evidence = judged && judged.evidence;
+      const [checked] = await verification.verifyCandidates({
+        candidates: [{ id: i, text: (x.item && (x.item.raw || x.item.listingText)) || 'item' }],
+        conditions: merged.effective,
+        evaluate: async () => (evidence ? { ok: true, before: evidence.before, after: evidence.after } : { ok: false, error: 'Path of Building did not return this item' }),
+        evaluateGuards: (_c, before, after) => guardLib.evaluateGuards(merged, before, after, { weaponSet: store.settings.weaponSet || 0 }),
+        overall: guardLib.overall,
+      });
+      if (x.compare) { x.compare.status = checked.status; x.compare.statusReason = checked.reason || null; }
+      if (!judged) continue;
+      applyPob(x.compare, judged);
+      x.valuePerDiv = x.priceEx && judged.score > 0 ? (judged.score / Math.max(x.priceEx, 1)) * (store.settings.divineRate || 1) : null;
+    }
     log(`pob: judged ${js.filter(Boolean).length} of ${fresh.length} listings in ${Date.now() - t0} ms`);
   } catch (err) { log('pob: listings: ' + err.message); }
 }
