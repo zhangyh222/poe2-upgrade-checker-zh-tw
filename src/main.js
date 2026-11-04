@@ -1637,6 +1637,34 @@ ipcMain.handle('gearquery:more', async (_e, payload) => {
   }
 });
 
+// A route PoB traced is the shortest walk through the tree, and "shortest" is not
+// "legal": it can cross an ascendancy gate, depend on a cluster jewel that is not
+// socketed, or quote a cost the current weapon set does not pay. The draft only
+// takes a route that can be proven, so the walk is checked against the tree first.
+async function passiveTreeForCheck() {
+  const key = `${store.data.activeProfile}|${pobSheetGen}`;
+  if (pobLastTree.has(key)) return pobLastTree.get(key);
+  await pobEngine().ensureLoaded();
+  const res = await pobEngine().send({ cmd: 'passivetree' }, 120000);
+  if (res && res.ok) { pobLastTree.clear(); pobLastTree.set(key, res); }
+  return res;
+}
+
+async function checkPassivePath(ids) {
+  const pathCheck = require('./core/passive-path');
+  let tree = null;
+  try {
+    const res = await passiveTreeForCheck();
+    if (res && res.ok) tree = res;
+    else log('path check: no passive tree: ' + ((res && res.error) || 'unknown'));
+  } catch (err) {
+    // the tree lives in the engine: if it is switched off the walk stays unverified
+    log('path check: ' + (err.message || err));
+  }
+  const info = pobEngine().info() || {};
+  return pathCheck.validatePath({ tree, path: ids, ascendancy: info.ascendancy || '' });
+}
+
 // A drawn passive route goes into a draft, not into the build: the player can then
 // calculate it and adopt it like any other change, and the build keeps a version.
 ipcMain.handle('drafts:path', async (_e, ids) => {
@@ -1647,6 +1675,24 @@ ipcMain.handle('drafts:path', async (_e, ids) => {
     const characterId = store.data.activeProfile || 'main';
     let draft = activeDraftId() ? await buildRepo().getDraft(activeDraftId()) : null;
     if (!draft || draft.status !== 'editing') { draft = await draftService().start(characterId); setActiveDraftId(draft.id); }
+    // legal-only: an unprovable walk is refused with a reason instead of being
+    // written and discovered later in the numbers
+    const check = await checkPassivePath(ids.map(Number));
+    if (check.status !== 'ok') {
+      const invalid = check.status === 'invalid';
+      log(`draft: path ${check.status}: ${check.reasons.map((r) => `${r.code}:${r.node}`).join(', ')}`);
+      return {
+        ok: false,
+        code: invalid ? 'PATH_INVALID' : 'PATH_UNVERIFIED',
+        reasons: check.reasons,
+        error: {
+          key: invalid
+            ? 'That passive route is not a legal walk, so it was not added to the draft.'
+            : 'That passive route could not be verified, so it was not added to the draft.',
+          args: [],
+        },
+      };
+    }
     const out = await pobEngine().allocatePlan(draft.document, ids.map(Number));
     const updated = await buildRepo().updateDraft(draft.id, draft.revision, { ...draft.document, xml: out.xml });
     log(`draft: added ${out.added} passive node(s) as revision ${updated.revision}`);
