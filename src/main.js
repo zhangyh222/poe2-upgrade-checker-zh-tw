@@ -1626,13 +1626,7 @@ ipcMain.handle('gearquery:search', async (_e, payload) => {
         .filter((l) => l && typeof l.text === 'string' && l.text.trim() && !PROPERTY_LINE.test(l.text))
         .slice(0, 10)
         .map((l) => ({ text: l.text }));
-      candidates.push({
-        id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: rawText, lines,
-        priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx,
-        // the whole parsed listing, so the page can draw the same item card the rest of
-        // the app uses (properties, requirements, affix badges and tiers)
-        item: s.item,
-      });
+      candidates.push({ id: x.id, name: s.item.name, baseType: s.item.baseType || '', text: rawText, lines, priceText: s.priceText || null, priceEx: s.priceEx == null ? null : s.priceEx });
     }
     log(`gear query: ${candidates.length} candidates for ${slot} (${picks.length} affixes)`);
     // the ids stay on the client so "more" costs no extra search (the trade site
