@@ -430,21 +430,44 @@
   }
 
   let pathMsg = '';
+  // the state the draft hand-off came back with: a confirmed route, a route the
+  // rules cannot judge, or one they reject. The badge and the strip say which,
+  // because "it did not go in" and "it went in unchecked" are different answers.
+  let pathState = null;
+  const PATH_REASON_TEXT = {
+    TREE_MISSING: 'the passive tree is not loaded',
+    ASCENDANCY_MISSING: 'the ascendancy class is unknown',
+    JEWEL_DATA_MISSING: 'a cluster jewel is needed but not socketed',
+    WEAPON_SET_NODES: 'the points belong to the other weapon set',
+    EMPTY: 'there is nothing to add',
+    UNKNOWN_NODE: 'a node is not in the tree',
+    NO_START: 'the route does not start from an allocated node',
+    NOT_ADJACENT: 'the route skips a node',
+    WRONG_ASCENDANCY: 'the route crosses into another ascendancy',
+  };
+  function pathReasonText(reasons) {
+    if (!Array.isArray(reasons) || !reasons.length) return '';
+    return ' (' + reasons.map((code) => t(PATH_REASON_TEXT[code] || code)).join('; ') + ')';
+  }
   function renderPathNote() {
     const el = document.querySelector('#passPath');
     if (!el) return;
     if (!path || !path.length) { el.innerHTML = ''; return; }
     const names = path.map((p) => esc(gn(p.name) || p.name)).join(' → ');
     const canAdd = path.some((p) => !p.allocated);
+    const badge = pathState ? ` <span class="path-badge ${pathState.kind}">${esc(t(pathState.label))}</span>` : '';
+    const strip = pathState && pathState.text ? `<div class="path-error">${esc(pathState.text)}</div>` : '';
     el.innerHTML = `<span class="dim small">${esc(t('Path ({0} points):', pathCost == null ? '?' : pathCost))}</span> ${names}`
       + (canAdd ? ` <button type="button" class="link" data-pathdraft>${esc(t('Add this route to a draft'))}</button>` : '')
-      + (pathMsg ? ` <span class="small">${esc(pathMsg)}</span>` : '');
+      + badge
+      + (pathMsg ? ` <span class="small">${esc(pathMsg)}</span>` : '')
+      + strip;
   }
 
   // the route is fetched when a node is picked, not for every search hit: it is a
   // separate walk and only one node at a time is being looked at
   async function tracePath(n) {
-    path = null; pathCost = null;
+    path = null; pathCost = null; pathState = null; pathMsg = '';
     renderPathNote();
     try {
       const r = await window.api.nodePath(n.id).catch(() => null);
@@ -561,9 +584,21 @@
     pathMsg = t('Adding…');
     renderPathNote();
     const r = await window.api.draftPath(path.map((p) => p.id)).catch((err) => ({ ok: false, error: err.message }));
-    pathMsg = r && r.ok
-      ? t('Added to the draft as revision {0}; calculate and adopt it on the Builds page.', r.draft.revision)
-      : displayError((r && r.error) || 'could not add to the draft');
+    if (r && r.ok) {
+      pathMsg = t('Added to the draft as revision {0}; calculate and adopt it on the Builds page.', r.draft.revision);
+      pathState = { kind: 'ok', label: 'Checked', text: '' };
+    } else if (r && (r.code === 'PATH_INVALID' || r.code === 'PATH_UNVERIFIED')) {
+      // the route was refused: say why, not just "could not add"
+      pathMsg = '';
+      pathState = {
+        kind: r.code === 'PATH_INVALID' ? 'invalid' : 'unverified',
+        label: r.code === 'PATH_INVALID' ? 'Not legal' : 'Unverified',
+        text: displayError(r.error) + pathReasonText(r.reasons),
+      };
+    } else {
+      pathMsg = displayError((r && r.error) || 'could not add to the draft');
+      pathState = null;
+    }
     renderPathNote();
   });
 

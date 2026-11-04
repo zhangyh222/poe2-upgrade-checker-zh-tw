@@ -657,3 +657,10 @@ body.panelwin { user-select: none; overflow-y: auto; }
 .pj-mods { display: grid; gap: 1px; margin-top: 3px; color: #b9c8f2; }
 .pj-note { margin-top: 3px; font-size: 10px; color: var(--ash, #8a8177); }
 .pass-empty { padding: 40px 16px; text-align: center; color: var(--ash, #8a8177); }
+
+/* ---------- passive path state: confirmed / unverified / not legal ---------- */
+.path-badge { margin-left: 6px; padding: 0 5px; font-size: 12px; line-height: 18px; border: 1px solid var(--iron-hi); color: var(--ash); }
+.path-badge.ok { color: var(--up); border-color: rgba(111, 209, 106, .55); }
+.path-badge.unverified { color: var(--warn); border-color: rgba(224, 176, 78, .55); border-style: dashed; }
+.path-badge.invalid { color: var(--down); border-color: rgba(226, 72, 60, .55); }
+.path-error { margin-top: 6px; padding: 6px 8px; border-left: 2px solid var(--down); background: rgba(226, 72, 60, .1); color: var(--down); font-size: 12px; }
