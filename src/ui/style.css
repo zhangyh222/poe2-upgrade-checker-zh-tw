@@ -759,3 +759,10 @@ body.panelwin { user-select: none; overflow-y: auto; }
 .gq-layer .gq-add { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
 .gq-layer .gq-add select[data-gq-metric] { grid-column: 1 / -1; }
 .gq-layer .gq-add input[data-gq-value] { min-width: 0; width: 100%; }
+
+/* ---------- a candidate is an item card, not a line of text ---------- */
+.gq-results .gq-cand-wrap { border: 1px solid var(--iron, #3a332c); border-radius: 4px; background: #0f1116; padding: 8px 10px; margin-bottom: 10px; }
+.gq-cand-head { align-items: center; gap: 8px; margin-bottom: 4px; }
+.gq-price { color: #c9a463; font-weight: 600; font-size: 13px; }
+.gq-item-card { border-top: 1px solid rgba(58, 51, 44, .5); padding-top: 6px; }
+.gq-item-card .it-block { margin: 5px 0; }
