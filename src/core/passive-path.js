@@ -56,14 +56,32 @@ function flag(node, bit) { return (node.flags & bit) !== 0; }
 
 // The player's ascendancy class, when the caller knows it. Without it an
 // ascendancy node cannot be judged either way.
+// Stable reason codes are the contract with the page and the draft: the detail
+// (which node) is there for the log, the code is what a caller switches on.
+const STABLE = {
+  NO_TREE: 'TREE_MISSING',
+  ASCENDANCY_UNKNOWN: 'ASCENDANCY_MISSING',
+  JEWEL_UNKNOWN: 'JEWEL_DATA_MISSING',
+  WEAPON_SET: 'WEAPON_SET_NODES',
+};
+
+function stableCodes(details) {
+  const out = [];
+  for (const d of details) {
+    const code = STABLE[d.code] || d.code;
+    if (!out.includes(code)) out.push(code);
+  }
+  return out;
+}
+
 function validatePath(input) {
   const { tree, path, ascendancy, weaponSet } = input || {};
   const ids = (Array.isArray(path) ? path : []).map(Number).filter(Number.isFinite);
   const reasons = [];
   const graph = readTree(tree);
 
-  if (!graph.nodes.size) return { status: 'unverified', reasons: [{ code: 'NO_TREE' }], checked: 0 };
-  if (!ids.length) return { status: 'invalid', reasons: [{ code: 'EMPTY' }], checked: 0 };
+  if (!graph.nodes.size) return { status: 'unverified', reasons: ['TREE_MISSING'], details: [], checked: 0 };
+  if (!ids.length) return { status: 'invalid', reasons: ['EMPTY'], details: [], checked: 0 };
 
   // what the build already has; a route is legal relative to this
   const allocated = new Set();
@@ -114,7 +132,7 @@ function validatePath(input) {
 
   const hasInvalid = reasons.some((r) => r.code !== 'ASCENDANCY_UNKNOWN' && r.code !== 'JEWEL_UNKNOWN' && r.code !== 'WEAPON_SET');
   const status = hasInvalid ? 'invalid' : (unverified ? 'unverified' : 'ok');
-  return { status, reasons, checked: ids.length };
+  return { status, reasons: stableCodes(reasons), details: reasons, checked: ids.length };
 }
 
 module.exports = { validatePath, FLAG };

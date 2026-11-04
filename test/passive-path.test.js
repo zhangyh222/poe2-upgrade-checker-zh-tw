@@ -30,32 +30,33 @@ test('a walk that grows from an allocated node is accepted', () => {
 test('skipping a node is a jump, not a shortcut', () => {
   const r = validatePath({ tree: tree(), path: [2, 4] });
   assert.equal(r.status, 'invalid');
-  assert.deepEqual(r.reasons, [{ code: 'NOT_ADJACENT', node: 4 }]);
+  assert.deepEqual(r.reasons, ['NOT_ADJACENT']);
+  assert.deepEqual(r.details, [{ code: 'NOT_ADJACENT', node: 4 }]);
 });
 
 test('a route that does not touch anything allocated cannot start', () => {
   const r = validatePath({ tree: tree(), path: [4, 3] });
   assert.equal(r.status, 'invalid');
-  assert.equal(r.reasons[0].code, 'NO_START');
-  assert.equal(r.reasons[0].node, 4);
+  assert.deepEqual(r.reasons, ['NO_START']);
+  assert.equal(r.details[0].node, 4);
 });
 
 test('an id the tree does not know is refused, not ignored', () => {
   const r = validatePath({ tree: tree(), path: [2, 999] });
   assert.equal(r.status, 'invalid');
-  assert.ok(r.reasons.some((x) => x.code === 'UNKNOWN_NODE' && x.node === 999));
+  assert.ok(r.reasons.includes('UNKNOWN_NODE'));
 });
 
 test('an ascendancy node without the class is unverified, not invalid', () => {
   const r = validatePath({ tree: tree(), path: [2, 3, 5] });
   assert.equal(r.status, 'unverified');
-  assert.deepEqual(r.reasons, [{ code: 'ASCENDANCY_UNKNOWN', node: 5 }]);
+  assert.deepEqual(r.reasons, ['ASCENDANCY_MISSING']);
 });
 
 test('the wrong ascendancy class is invalid; the right one passes', () => {
   const wrong = validatePath({ tree: tree(), path: [2, 3, 5], ascendancy: 'Deadeye' });
   assert.equal(wrong.status, 'invalid');
-  assert.deepEqual(wrong.reasons, [{ code: 'WRONG_ASCENDANCY', node: 5 }]);
+  assert.deepEqual(wrong.reasons, ['WRONG_ASCENDANCY']);
   const right = validatePath({ tree: tree(), path: [2, 3, 5], ascendancy: 'Necromancer' });
   assert.equal(right.status, 'ok');
 });
@@ -63,17 +64,17 @@ test('the wrong ascendancy class is invalid; the right one passes', () => {
 test('a jewel socket without jewel data is unverified', () => {
   const r = validatePath({ tree: tree(), path: [2, 6], ascendancy: undefined });
   assert.equal(r.status, 'unverified');
-  assert.deepEqual(r.reasons, [{ code: 'JEWEL_UNKNOWN', node: 6 }]);
+  assert.deepEqual(r.reasons, ['JEWEL_DATA_MISSING']);
 });
 
 test('no tree at all is unverified: the rule cannot be applied', () => {
   const r = validatePath({ tree: null, path: [2, 3] });
   assert.equal(r.status, 'unverified');
-  assert.deepEqual(r.reasons, [{ code: 'NO_TREE' }]);
+  assert.deepEqual(r.reasons, ['TREE_MISSING']);
 });
 
 test('an empty route is rejected outright', () => {
   const r = validatePath({ tree: tree(), path: [] });
   assert.equal(r.status, 'invalid');
-  assert.deepEqual(r.reasons, [{ code: 'EMPTY' }]);
+  assert.deepEqual(r.reasons, ['EMPTY']);
 });

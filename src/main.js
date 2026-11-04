@@ -1684,11 +1684,13 @@ ipcMain.handle('drafts:path', async (_e, ids) => {
       return {
         ok: false,
         code: invalid ? 'PATH_INVALID' : 'PATH_UNVERIFIED',
+        status: check.status,
         reasons: check.reasons,
+        details: check.details,
         error: {
           key: invalid
             ? 'That passive route is not a legal walk, so it was not added to the draft.'
-            : 'That passive route could not be verified, so it was not added to the draft.',
+            : 'This path could not be verified and was not saved to the draft; provide the required data and try again.',
           args: [],
         },
       };
