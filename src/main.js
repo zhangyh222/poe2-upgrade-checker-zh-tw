@@ -932,7 +932,7 @@ ipcMain.handle('setting:set', (_e, key, value) => {
   // the weapon set marked on the main damage skill decides what the character page calculates
   if (key === 'skillWeaponSets') { pobSheetGen++; pobLastSheet.clear(); pobLastSources.clear(); pobLastSummary.clear(); }
   if (key === 'resultsHotkey') registerResultsHotkey();
-  if (key === 'autoUpdate' && autoUpdater) autoUpdater.autoDownload = value !== false;
+  if (key === 'autoUpdate' && autoUpdater) autoUpdater.autoDownload = value === true;
   if (key === 'uiScale') { [settingsWin, resultsWin].forEach((w) => { try { if (w && !w.isDestroyed()) w.webContents.setZoomFactor(uiScale()); } catch (_) { /* ignore */ } }); }
   if (key === 'language') {
     // the chosen language is persisted in the settings file; tell every window so they re-translate
@@ -3191,9 +3191,12 @@ let autoUpdater = null;
 // the installed app and the AppImage update themselves; the portable .exe and other Linux builds don't
 function updaterAvailable() { return app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR && (process.platform !== 'linux' || !!process.env.APPIMAGE); }
 function setupUpdater() {
+  // updates are opt-in: only an explicit autoUpdate: true starts the checker at all.
+  // Nothing is downloaded, and nothing installs itself on quit.
+  if (store.settings.autoUpdate !== true) { upd.state = 'off'; log('updater: off (autoUpdate is not enabled)'); return; }
   if (!updaterAvailable()) { upd.state = app.isPackaged ? 'portable' : 'dev'; return; }
   try { ({ autoUpdater } = require('electron-updater')); } catch (err) { upd.state = 'unavailable'; log('updater: ' + err.message); return; }
-  autoUpdater.autoDownload = store.settings.autoUpdate !== false;
+  autoUpdater.autoDownload = store.settings.autoUpdate === true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.logger = { info: (m) => log('updater: ' + m), warn: (m) => log('updater warn: ' + m), error: (m) => log('updater error: ' + m), debug: () => {} };
   const changed = () => { notifySettings('update:changed'); buildTrayMenu(); };

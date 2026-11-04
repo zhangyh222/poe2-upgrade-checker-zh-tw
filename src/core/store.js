@@ -32,7 +32,7 @@ class Store {
     this.dir = dir;
     fs.mkdirSync(dir, { recursive: true });
     this.file = path.join(dir, 'poe2-upgrade-checker.json');
-    this.data = { weights: { ...DEFAULT_WEIGHTS }, equipped: {}, seenStats: {}, settings: { autoHideSeconds: 12, paused: false, hotkey: 'F2', watchClipboard: true, advancedCopy: true, autoRate: true, status: 'available' } };
+    this.data = { weights: { ...DEFAULT_WEIGHTS }, equipped: {}, seenStats: {}, settings: { autoHideSeconds: 12, paused: false, hotkey: 'F2', watchClipboard: true, advancedCopy: true, autoUpdate: false, autoRate: true, status: 'available' } };
     // never start from defaults over a file that's only temporarily unreadable (antivirus at login):
     // retry, then keep the broken file aside instead of overwriting everyone's gear and settings
     if (fs.existsSync(this.file)) {
