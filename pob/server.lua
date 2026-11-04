@@ -1409,6 +1409,34 @@ local function allocateNodes(req)
   return r
 end
 
+-- Take passive nodes back out of a build. Same rebuild Path of Building does after
+-- its own tree edit, then the build handed back as XML. "nodes", not "id": the
+-- request envelope uses id for the reply correlation.
+local function deallocateNodes(req)
+  local ids = req.nodes
+  if type(ids) ~= "table" or #ids == 0 then return { ok = false, error = "no nodes to remove" } end
+  local spec = build.spec
+  if not spec or not spec.nodes then return { ok = false, error = "Path of Building hasn't loaded a passive tree." } end
+  local removed = 0
+  for _, raw in ipairs(ids) do
+    local id = tonumber(raw)
+    local node = id and spec.nodes[id]
+    if node and spec.allocNodes[id] then
+      node.alloc = false
+      node.allocMode = 0
+      spec.allocNodes[id] = nil
+      removed = removed + 1
+    end
+  end
+  spec:BuildAllDependsAndPaths()
+  build.buildFlag = true
+  if build.calcsTab and build.calcsTab.BuildOutput then build.calcsTab:BuildOutput() end
+  local r = saveXml()
+  r.removed = removed
+  r.ok = r.ok ~= false
+  return r
+end
+
 -- The build as Path of Building itself would export it: the same tables its Save
 -- methods fill, composed by its own XML writer. This is what makes an edit (e.g. a
 -- skill's weapon sets) survive as a build again, instead of living only in memory.
@@ -1509,6 +1537,8 @@ while true do
       return nodePath(req)
     elseif req.cmd == "allocatenodes" then
       return allocateNodes(req)
+    elseif req.cmd == "deallocatenodes" then
+      return deallocateNodes(req)
     elseif req.cmd == "tiers" then
       return affixTiers(req)
     elseif req.cmd == "setskill" then

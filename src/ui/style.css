@@ -680,3 +680,11 @@ body.panelwin { user-select: none; overflow-y: auto; }
 .gq-name { font-weight: 600; margin: 4px 0 6px; }
 .gq-find { gap: 6px; flex-wrap: wrap; }
 .gq-find .lg { cursor: pointer; border: 1px solid var(--iron, #3a332c); padding: 1px 6px; }
+
+/* ---------- draft tree editing ---------- */
+.draft-bar { gap: 8px; align-items: center; }
+.draft-chips { gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.draft-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 1px 4px 1px 6px; border: 1px solid var(--iron); }
+.draft-chip.add { color: #7ddc7d; border-color: rgba(125, 220, 125, .5); }
+.draft-chip.remove { color: #e26a5c; border-color: rgba(226, 106, 92, .5); }
+.draft-chip button { line-height: 1; padding: 0 2px; }

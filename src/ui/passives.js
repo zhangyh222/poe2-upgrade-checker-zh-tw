@@ -43,6 +43,14 @@
   let path = null; // the node ids from something allocated to the picked node
   let pathCost = null;
   let currentSet = 1; // which weapon set the page is calculated on
+  // The tree draft is edited on the tree itself: the working set starts as a copy
+  // of what the build has, every click adds or takes back one node, and nothing
+  // reaches the draft until the player says the shape is right.
+  let draftMode = false;
+  let draftBase = new Set();
+  let draftSet = new Set();
+  let draftSel = null;
+  let draftMsg = '';
   let onlySet = false; // hide nodes that only work with the other set
   let lastResult = null; // the last engine answer, so the set filter needs no new call
   let filter = null; // a legend chip picked: highlight/zoom just those nodes
@@ -234,6 +242,25 @@
         ctx.lineWidth = 1.4;
         ctx.strokeStyle = hover === n ? '#fff4d6' : (filter ? '#ffe14d' : '#ffffff');
         ctx.stroke();
+      }
+      // draft editing: added nodes ring green, taken-back nodes ring red, and the
+      // node you last clicked gets a wide ring so it is obvious which one it is
+      if (draftMode) {
+        const inBase = draftBase.has(n.id);
+        const inSet = draftSet.has(n.id);
+        if (inSet && !inBase) {
+          ctx.beginPath(); ctx.arc(x, y, r + 4.5, 0, Math.PI * 2);
+          ctx.lineWidth = 2; ctx.strokeStyle = '#7ddc7d'; ctx.stroke();
+        } else if (!inSet && inBase) {
+          ctx.beginPath(); ctx.arc(x, y, r + 4.5, 0, Math.PI * 2);
+          ctx.lineWidth = 2; ctx.strokeStyle = '#e26a5c'; ctx.stroke();
+        }
+      }
+      // the node you last picked keeps a wide white ring, so "which one was it" has
+      // an answer after the hover moves away (draft or not)
+      if (draftSel === n.id) {
+        ctx.beginPath(); ctx.arc(x, y, r + 7.5, 0, Math.PI * 2);
+        ctx.lineWidth = 1.6; ctx.strokeStyle = '#ffffff'; ctx.stroke();
       }
       ctx.globalAlpha = 1;
     }
@@ -430,44 +457,97 @@
   }
 
   let pathMsg = '';
-  // the state the draft hand-off came back with: a confirmed route, a route the
-  // rules cannot judge, or one they reject. The badge and the strip say which,
-  // because "it did not go in" and "it went in unchecked" are different answers.
-  let pathState = null;
-  const PATH_REASON_TEXT = {
-    TREE_MISSING: 'the passive tree is not loaded',
-    ASCENDANCY_MISSING: 'the ascendancy class is unknown',
-    JEWEL_DATA_MISSING: 'a cluster jewel is needed but not socketed',
-    WEAPON_SET_NODES: 'the points belong to the other weapon set',
-    EMPTY: 'there is nothing to add',
-    UNKNOWN_NODE: 'a node is not in the tree',
-    NO_START: 'the route does not start from an allocated node',
-    NOT_ADJACENT: 'the route skips a node',
-    WRONG_ASCENDANCY: 'the route crosses into another ascendancy',
-  };
-  function pathReasonText(reasons) {
-    if (!Array.isArray(reasons) || !reasons.length) return '';
-    return ' (' + reasons.map((code) => t(PATH_REASON_TEXT[code] || code)).join('; ') + ')';
+
+  const draftChange = () => ({
+    add: [...draftSet].filter((id) => !draftBase.has(id)),
+    remove: [...draftBase].filter((id) => !draftSet.has(id)),
+  });
+  // how many picked neighbours a node has: a new node needs one, a node can only be
+  // taken back while nothing else hangs off it
+  function pickedNeighbours(set, id) {
+    let count = 0;
+    for (const [a, b] of edges) {
+      if (a === id && set.has(b)) count += 1;
+      else if (b === id && set.has(a)) count += 1;
+    }
+    return count;
   }
+  function draftToggle(n) {
+    if (!n) return;
+    draftSel = n.id;
+    if (draftSet.has(n.id)) {
+      if (pickedNeighbours(draftSet, n.id) > 1) {
+        draftMsg = t('That node still holds up other picked nodes, so it stays.');
+        draw(); renderPathNote(); return;
+      }
+      draftSet.delete(n.id);
+    } else {
+      if (!pickedNeighbours(draftSet, n.id)) {
+        draftMsg = t('That node has to touch a node you have already picked.');
+        draw(); renderPathNote(); return;
+      }
+      draftSet.add(n.id);
+    }
+    draftMsg = '';
+    draw(); renderPathNote();
+  }
+  function startDraft() {
+    draftMode = true;
+    draftBase = new Set(nodes.filter((n) => n.flags & 8).map((n) => n.id));
+    draftSet = new Set(draftBase);
+    draftSel = null; draftMsg = ''; path = null; pathMsg = '';
+    draw(); renderPathNote();
+  }
+  function exitDraft() {
+    draftMode = false; draftSel = null; draftMsg = '';
+    draw(); renderPathNote();
+  }
+  async function commitDraft() {
+    const { add, remove } = draftChange();
+    if (!add.length && !remove.length) { draftMsg = t('Nothing has changed yet.'); renderPathNote(); return; }
+    draftMsg = t('Saving the tree changes into the draft…');
+    renderPathNote();
+    const r = await window.api.draftTree({ add, remove }).catch((err) => ({ ok: false, error: String((err && err.message) || err) }));
+    if (r && r.ok) {
+      const changed = add.length + remove.length;
+      exitDraft();
+      pathMsg = t('Draft tree updated: {0} change(s), revision {1}. Calculate and adopt it on the Builds page.', changed, r.draft.revision);
+      renderPathNote();
+      await load(true);
+      return;
+    }
+    draftMsg = displayError((r && r.error) || 'could not update the draft');
+    renderPathNote();
+  }
+
   function renderPathNote() {
     const el = document.querySelector('#passPath');
     if (!el) return;
-    if (!path || !path.length) { el.innerHTML = ''; return; }
+    if (draftMode) {
+      const { add, remove } = draftChange();
+      const nameOf = (id) => { const n = byId.get(id); return gn((n && n.name) || '') || String(id); };
+      const chips = [
+        ...add.map((id) => `<span class="draft-chip add">+ ${esc(nameOf(id))}<button type="button" class="link" data-drafttoggle="${id}" title="${esc(t('Take it back'))}">×</button></span>`),
+        ...remove.map((id) => `<span class="draft-chip remove">− ${esc(nameOf(id))}<button type="button" class="link" data-drafttoggle="${id}" title="${esc(t('Put it back'))}">×</button></span>`),
+      ].join('');
+      el.innerHTML = `<div class="row draft-bar"><span class="small">${esc(t('Draft tree: {0} added, {1} taken back', add.length, remove.length))}</span>`
+        + ` <button type="button" class="link" data-draft="apply">${esc(t('Add these to a draft'))}</button>`
+        + ` <button type="button" class="link" data-draft="cancel">${esc(t('Discard the picks'))}</button>`
+        + (draftMsg ? ` <span class="small neg">${esc(draftMsg)}</span>` : '') + `</div>`
+        + (chips ? `<div class="row draft-chips">${chips}</div>` : '')
+        + `<div class="dim small">${esc(t('Click an empty node next to something picked to add it; click a picked node with nothing hanging off it to take it back.'))}</div>`;
+      return;
+    }
+    if (!path || !path.length) { el.innerHTML = pathMsg ? `<span class="small">${esc(pathMsg)}</span>` : ''; return; }
     const names = path.map((p) => esc(gn(p.name) || p.name)).join(' → ');
-    const canAdd = path.some((p) => !p.allocated);
-    const badge = pathState ? ` <span class="path-badge ${pathState.kind}">${esc(t(pathState.label))}</span>` : '';
-    const strip = pathState && pathState.text ? `<div class="path-error">${esc(pathState.text)}</div>` : '';
     el.innerHTML = `<span class="dim small">${esc(t('Path ({0} points):', pathCost == null ? '?' : pathCost))}</span> ${names}`
-      + (canAdd ? ` <button type="button" class="link" data-pathdraft>${esc(t('Add this route to a draft'))}</button>` : '')
-      + badge
-      + (pathMsg ? ` <span class="small">${esc(pathMsg)}</span>` : '')
-      + strip;
+      + (pathMsg ? ` <span class="small">${esc(pathMsg)}</span>` : '');
   }
 
   // the route is fetched when a node is picked, not for every search hit: it is a
   // separate walk and only one node at a time is being looked at
   async function tracePath(n) {
-    path = null; pathCost = null; pathState = null; pathMsg = '';
+    path = null; pathCost = null; pathMsg = '';
     renderPathNote();
     try {
       const r = await window.api.nodePath(n.id).catch(() => null);
@@ -537,7 +617,16 @@
     canvas.style.cursor = 'grabbing';
     ev.preventDefault();
   });
-  document.addEventListener('mouseup', () => { if (dragging) { dragging = null; canvas.style.cursor = 'grab'; } });
+  document.addEventListener('mouseup', (ev) => {
+    if (!dragging) return;
+    const moved = Math.abs(ev.clientX - dragging.cx) + Math.abs(ev.clientY - dragging.cy);
+    dragging = null; canvas.style.cursor = 'grab';
+    // a click (not a drag) picks the node under the cursor while the draft is open
+    if (!draftMode || moved > 4) return;
+    const rect = canvas.getBoundingClientRect();
+    const n = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    if (n) draftToggle(n);
+  });
   canvas.addEventListener('wheel', (ev) => {
     ev.preventDefault();
     const rect = canvas.getBoundingClientRect();
@@ -556,6 +645,8 @@
   });
 
   $('#passFit').addEventListener('click', () => { if (tree) fitAll(); });
+  const draftStartBtn = $('#passDraftEdit');
+  if (draftStartBtn) draftStartBtn.addEventListener('click', () => { if (tree) startDraft(); });
   $('#passCenter').addEventListener('click', () => { if (tree) centerAllocated(); });
   $('#passSearch').addEventListener('input', () => {
     clearTimeout(searchTimer);
@@ -574,32 +665,18 @@
       if (first) focusNode(first);
     });
   });
-  // a drawn route can be put into a draft, where it is calculated and adopted like
-  // any other change: the build keeps a version of what it was before
-  document.addEventListener('click', async (ev) => {
-    const b = ev.target.closest ? ev.target.closest('[data-pathdraft]') : null;
-    if (!b || !path || !path.length) return;
+  // draft editing controls: apply what was picked, or walk away from it
+  document.addEventListener('click', (ev) => {
+    const el = ev.target.closest ? ev.target.closest('[data-draft],[data-drafttoggle]') : null;
+    if (!el) return;
     ev.stopPropagation();
-    b.disabled = true;
-    pathMsg = t('Adding…');
-    renderPathNote();
-    const r = await window.api.draftPath(path.map((p) => p.id)).catch((err) => ({ ok: false, error: err.message }));
-    if (r && r.ok) {
-      pathMsg = t('Added to the draft as revision {0}; calculate and adopt it on the Builds page.', r.draft.revision);
-      pathState = { kind: 'ok', label: 'Checked', text: '' };
-    } else if (r && (r.code === 'PATH_INVALID' || r.code === 'PATH_UNVERIFIED')) {
-      // the route was refused: say why, not just "could not add"
-      pathMsg = '';
-      pathState = {
-        kind: r.code === 'PATH_INVALID' ? 'invalid' : 'unverified',
-        label: r.code === 'PATH_INVALID' ? 'Not legal' : 'Unverified',
-        text: displayError(r.error) + pathReasonText(r.reasons),
-      };
-    } else {
-      pathMsg = displayError((r && r.error) || 'could not add to the draft');
-      pathState = null;
+    if (el.dataset.drafttoggle != null) {
+      const n = nodes.find((x) => x.id === Number(el.dataset.drafttoggle));
+      if (n) draftToggle(n);
+      return;
     }
-    renderPathNote();
+    if (el.dataset.draft === 'apply') commitDraft().catch(() => {});
+    else if (el.dataset.draft === 'cancel') exitDraft();
   });
 
   // clicking a match centres that node (the nearest ones are listed first)
@@ -607,7 +684,7 @@
     const el = ev.target.closest('[data-node]');
     if (!el) return;
     const n = nodes.find((x) => x.id === Number(el.dataset.node));
-    if (n) focusNode(n);
+    if (n) { draftSel = n.id; focusNode(n); draw(); }
   });
 
   // the legend chips filter the tree: pick one to highlight + zoom to those nodes, pick it again to clear

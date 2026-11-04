@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('api', {
   gearQueryAdopt: (payload) => ipcRenderer.invoke('gearquery:adopt', payload),
   // put a drawn passive route into the draft (then calculate/adopt it there)
   draftPath: (ids) => ipcRenderer.invoke('drafts:path', ids),
+  draftTree: (payload) => ipcRenderer.invoke('drafts:tree', payload),
   // "must still be true after the swap" conditions: global, slot (weapon slots
   // also carry a weapon set) and the temporary layer the caller passes in
   guardsGet: (slotName) => ipcRenderer.invoke('guards:get', slotName),

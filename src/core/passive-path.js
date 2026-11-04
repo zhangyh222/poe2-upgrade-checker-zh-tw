@@ -135,4 +135,29 @@ function validatePath(input) {
   return { status, reasons: stableCodes(reasons), details: reasons, checked: ids.length };
 }
 
-module.exports = { validatePath, FLAG };
+// Draft editing works on a working set: what the player has clicked so far. Two
+// rules keep that set something the engine can actually take: a node joins only
+// next to something already in the set, and a node leaves only when nothing else
+// hangs off it (a leaf), so the rest of the tree stays connected.
+function canAllocate(tree, allocated, id) {
+  const graph = readTree(tree);
+  const node = graph.nodes.get(Number(id));
+  if (!node) return { ok: false, reason: 'not-in-tree' };
+  if (allocated.has(Number(id))) return { ok: false, reason: 'already-allocated' };
+  const near = graph.adjacency.get(Number(id)) || new Set();
+  for (const other of near) if (allocated.has(other)) return { ok: true };
+  return { ok: false, reason: 'not-adjacent' };
+}
+
+function canDeallocate(tree, allocated, id) {
+  const graph = readTree(tree);
+  if (!graph.nodes.has(Number(id))) return { ok: false, reason: 'not-in-tree' };
+  if (!allocated.has(Number(id))) return { ok: false, reason: 'not-allocated' };
+  const near = graph.adjacency.get(Number(id)) || new Set();
+  let linked = 0;
+  for (const other of near) if (allocated.has(other)) linked += 1;
+  if (linked > 1) return { ok: false, reason: 'not-a-leaf' };
+  return { ok: true };
+}
+
+module.exports = { validatePath, canAllocate, canDeallocate, FLAG };

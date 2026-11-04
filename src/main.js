@@ -1726,6 +1726,49 @@ ipcMain.handle('drafts:path', async (_e, ids) => {
   } catch (err) { return draftReply(err); }
 });
 
+// A whole tree edit (nodes added and nodes taken back) goes into the draft in one
+// step, so a half-applied tree never exists: the player picks freely on the tree,
+// then says when the shape is right.
+ipcMain.handle('drafts:tree', async (_e, payload) => {
+  try {
+    const add = (payload && Array.isArray(payload.add) ? payload.add : []).map(Number).filter(Number.isFinite);
+    const remove = (payload && Array.isArray(payload.remove) ? payload.remove : []).map(Number).filter(Number.isFinite);
+    if (!add.length && !remove.length) return { ok: false, error: { key: 'Nothing to change on the tree.', args: [] } };
+    const base = await syncBuildDocument();
+    if (!base) return { ok: false, code: 'BUILD_NOT_FOUND', error: { key: DRAFT_ERRORS.BUILD_NOT_FOUND, args: [] } };
+    // the same proof a single route needs, applied to the whole shape being added
+    if (add.length) {
+      const check = await checkPassivePath(add);
+      if (check.status !== 'ok') {
+        const invalid = check.status === 'invalid';
+        log(`draft: tree ${check.status}: ${check.reasons.join(', ')}`);
+        return {
+          ok: false,
+          code: invalid ? 'PATH_INVALID' : 'PATH_UNVERIFIED',
+          status: check.status,
+          reasons: check.reasons,
+          details: check.details,
+          error: {
+            key: invalid
+              ? 'That passive route is not a legal walk, so it was not added to the draft.'
+              : 'This path could not be verified and was not saved to the draft; provide the required data and try again.',
+            args: [],
+          },
+        };
+      }
+    }
+    const characterId = store.data.activeProfile || 'main';
+    let draft = activeDraftId() ? await buildRepo().getDraft(activeDraftId()) : null;
+    if (!draft || draft.status !== 'editing') { draft = await draftService().start(characterId); setActiveDraftId(draft.id); }
+    let doc = draft.document;
+    if (remove.length) { const out = await pobEngine().deallocatePlan(doc, remove); doc = { ...doc, xml: out.xml }; }
+    if (add.length) { const out = await pobEngine().allocatePlan(doc, add); doc = { ...doc, xml: out.xml }; }
+    const updated = await buildRepo().updateDraft(draft.id, draft.revision, doc);
+    log(`draft: tree edit +${add.length} -${remove.length} as revision ${updated.revision}`);
+    return { ok: true, draft: updated, added: add.length, removed: remove.length };
+  } catch (err) { return draftReply(err); }
+});
+
 // Adopting a candidate goes through a draft, not straight into the character: the
 // build gets a new version, Path of Building has to agree, and the version it
 // replaced stays in history. Equipping directly would change the build with no

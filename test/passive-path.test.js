@@ -78,3 +78,26 @@ test('an empty route is rejected outright', () => {
   assert.equal(r.status, 'invalid');
   assert.deepEqual(r.reasons, ['EMPTY']);
 });
+
+// ---- draft editing rules ----
+
+test('a node joins the draft only next to something already in it', () => {
+  const t = tree();
+  const { canAllocate } = require('../src/core/passive-path');
+  const set = new Set([1]);
+  assert.equal(canAllocate(t, set, 2).ok, true);
+  assert.deepEqual(canAllocate(t, set, 4), { ok: false, reason: 'not-adjacent' });
+  assert.deepEqual(canAllocate(t, set, 1), { ok: false, reason: 'already-allocated' });
+  assert.deepEqual(canAllocate(t, set, 999), { ok: false, reason: 'not-in-tree' });
+});
+
+test('a node leaves the draft only when nothing hangs off it', () => {
+  const t = tree();
+  const { canDeallocate } = require('../src/core/passive-path');
+  const set = new Set([1, 2, 3]);
+  // 3 is a leaf (its only allocated neighbour is 2)
+  assert.equal(canDeallocate(t, set, 3).ok, true);
+  // 2 sits between 1 and 3: taking it out would orphan 3
+  assert.deepEqual(canDeallocate(t, set, 2), { ok: false, reason: 'not-a-leaf' });
+  assert.deepEqual(canDeallocate(t, set, 4), { ok: false, reason: 'not-allocated' });
+});
