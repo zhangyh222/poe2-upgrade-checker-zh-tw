@@ -363,7 +363,7 @@ body.app { display: grid; grid-template-columns: 224px minmax(0, 1fr); height: 1
   .grid.g-2 > .side-col { position: sticky; top: 4px; align-self: start; }
 }
 @media (min-width: 1900px) { .grid.g-2 { grid-template-columns: minmax(0, 1.8fr) minmax(420px, 1fr); } }
-.grid.g-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); gap: 0 18px; }
+.grid.g-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 0 18px; }
 .gear-summary { border: none; background: none; padding: 0 0 10px; margin: 0 0 6px; border-bottom: 1px solid var(--iron-lo); border-radius: 0; }
 .gear-summary:empty { display: none; }
 /* Find upgrades: everything that shapes a search sits in one bar */

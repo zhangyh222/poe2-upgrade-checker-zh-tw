@@ -56,9 +56,9 @@ async function load() {
   if (state.platform === 'linux') $('#startWithLabel').textContent = t('Start when I log in');
   // the real place (a folder next to the app, or the profile folder when that isn't writable),
   // never the %APPDATA% text the page ships with
-  if (state.dataDir) $('#dataDirText').textContent = state.dataDir;
+  if (state.dataDir && $('#dataDirText')) $('#dataDirText').textContent = state.dataDir;
   $('#openSettingsOnStart').checked = state.settings.openSettingsOnStart !== false;
-  $('#advancedCopy').checked = !!state.settings.advancedCopy;
+  $('#advancedCopy').checked = state.settings.advancedCopy !== false;
   $('#watchClipboard').checked = state.settings.watchClipboard !== false;
   const hs = state.hotkeyStatus || {};
   if (document.activeElement !== $('#hotkey')) $('#hotkey').value = state.settings.hotkey || 'F2';
@@ -437,8 +437,9 @@ $('#hotkeySave').addEventListener('click', async () => {
 });
 $('#advancedCopy').addEventListener('change', () => window.api.setSetting('advancedCopy', $('#advancedCopy').checked));
 $('#watchClipboard').addEventListener('change', () => window.api.setSetting('watchClipboard', $('#watchClipboard').checked));
-$('#testPopup').addEventListener('click', () => window.api.testPopup());
-$('#openLog').addEventListener('click', () => window.api.openLog());
+// the Troubleshooting card is gone from the page; keep the handlers conditional
+if ($('#testPopup')) $('#testPopup').addEventListener('click', () => window.api.testPopup());
+if ($('#openLog')) $('#openLog').addEventListener('click', () => window.api.openLog());
 
 // ---------- budget ----------
 function readBudget() {
@@ -986,14 +987,17 @@ async function renderAlertStatus() {
 $('#alertEvery').addEventListener('change', async () => { await window.api.setSetting('alertEvery', Number($('#alertEvery').value)); renderAlertStatus(); });
 
 // ---------- account ----------
+// the trade-account card is gone from the page; the status call is only useful
+// while its controls exist
 async function renderAccount() {
+  if (!$('#signStatus')) return;
   accountAt = Date.now();
   const st = await window.api.accountStatus();
   $('#signStatus').textContent = st.signedIn ? t('Signed in.') : t('Not signed in.');
   $('#signOut').disabled = !st.signedIn;
 }
-$('#signIn').addEventListener('click', async () => { $('#signStatus').textContent = t('Sign in in the window that opened…'); await window.api.signIn(); renderAccount(); });
-$('#signOut').addEventListener('click', async () => { await window.api.signOut(); renderAccount(); });
+if ($('#signIn')) $('#signIn').addEventListener('click', async () => { $('#signStatus').textContent = t('Sign in in the window that opened…'); await window.api.signIn(); renderAccount(); });
+if ($('#signOut')) $('#signOut').addEventListener('click', async () => { await window.api.signOut(); renderAccount(); });
 renderAccount();
 
 // ---------- updates ----------
@@ -1014,20 +1018,24 @@ async function renderUpdate(st) {
     ready: `${v}. ` + t('Version {0} is ready.', st.version),
     error: `${v}. ` + t('Couldn\'t check: {0}', displayError(st.error || t('unknown error'))),
   }[st.state] || v;
+  // the Updates card is gone from the page: only paint it when its nodes exist
+  if (!$('#updStatus')) return;
   $('#updStatus').textContent = msg;
   const noUpd = ['dev', 'portable', 'unavailable'].includes(st.state);
-  $('#updCheck').disabled = noUpd || st.state === 'checking';
-  $('#autoUpdate').disabled = noUpd;
+  if ($('#updCheck')) $('#updCheck').disabled = noUpd || st.state === 'checking';
+  if ($('#autoUpdate')) $('#autoUpdate').disabled = noUpd;
   const act = $('#updAction');
-  act.classList.toggle('hidden', !['available', 'ready'].includes(st.state));
-  act.textContent = st.state === 'ready' ? t('Restart & update') : t('Download');
+  if (act) {
+    act.classList.toggle('hidden', !['available', 'ready'].includes(st.state));
+    act.textContent = st.state === 'ready' ? t('Restart & update') : t('Download');
+  }
 }
-$('#updCheck').addEventListener('click', async () => { $('#updStatus').textContent = t('Checking…'); renderUpdate(await window.api.updateCheck()); });
-$('#updAction').addEventListener('click', async () => {
+if ($('#updCheck')) $('#updCheck').addEventListener('click', async () => { $('#updStatus').textContent = t('Checking…'); renderUpdate(await window.api.updateCheck()); });
+if ($('#updAction')) $('#updAction').addEventListener('click', async () => {
   const st = await window.api.updateStatus();
   if (st.state === 'ready') window.api.updateInstall(); else renderUpdate(await window.api.updateDownload());
 });
-(async () => {
+if ($('#autoUpdate')) (async () => {
   const s = (await window.api.getState()).settings || {};
   $('#autoUpdate').checked = s.autoUpdate !== false;
   $('#autoUpdate').addEventListener('change', () => window.api.setSetting('autoUpdate', $('#autoUpdate').checked));

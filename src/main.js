@@ -786,7 +786,9 @@ async function onHotkey() {
     }
     // send the copy before anything appears on screen: a window popping up first can make
     // the game drop its tooltip (then nothing gets copied). One Ctrl+C per press, never more.
-    const sent = await keys.copy(!!store.settings.advancedCopy, { nudge });
+    // advanced copy is the default now: it is what makes affix tiers visible in the
+    // copied text. Only an explicit "off" in settings turns it back to plain Ctrl+C.
+    const sent = await keys.copy(store.settings.advancedCopy !== false, { nudge });
     if (!sent) log('hotkey: could not send Ctrl+C to the game');
     else if (sent !== true && !/^fg=PathOfExile[^;]*;over=PathOfExile/i.test(sent)) log('hotkey: sent to ' + sent);
     let text = await waitForText(250);
