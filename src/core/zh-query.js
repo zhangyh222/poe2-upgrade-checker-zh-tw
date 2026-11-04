@@ -98,4 +98,22 @@ function verifyGlossary(dict) {
   return missing;
 }
 
-module.exports = { translate, verifyGlossary, hasChinese, hintsFromDict, TERMS };
+// A short phrase is often half a node's name ("高貴" -> "The Noble Wolf"), and the
+// names catalog is the only place that mapping exists. Search terms keep the
+// engine's substring rule in mind: "the" is dropped, because the tree usually
+// stores "Noble Wolf" rather than the article.
+function namesFromDict(query, dict) {
+  const q = String(query || '').trim();
+  if (!q || !dict || !dict.names) return [];
+  const out = [];
+  for (const [en, zh] of Object.entries(dict.names)) {
+    if (typeof zh !== 'string' || !zh.includes(q)) continue;
+    const full = String(en).toLowerCase();
+    if (!out.includes(full)) out.push(full);
+    const bare = full.replace(/^the\s+/, '');
+    if (bare !== full && !out.includes(bare)) out.push(bare);
+  }
+  return out;
+}
+
+module.exports = { translate, verifyGlossary, hasChinese, hintsFromDict, namesFromDict, TERMS };

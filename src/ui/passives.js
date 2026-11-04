@@ -456,7 +456,10 @@
     if (!q) { lastResult = null; renderResults(null); draw(); return; }
     matches = localMatches(q);
     const localList = {
-      nodes: [...matches].map((id) => ({ id, name: (byId.get(id) || {}).name || '', kinds: [], cost: null })).slice(0, 40),
+      nodes: [...matches].map((id) => {
+        const n = byId.get(id) || {};
+        return { id, name: n.name || '', stats: Array.isArray(n.stats) ? n.stats : [], kinds: [], cost: null };
+      }).slice(0, 40),
       total: matches.size, pending: true, localOnly: true,
     };
     lastResult = localList;
@@ -567,8 +570,9 @@
       return;
     }
     if (!path || !path.length) { el.innerHTML = pathMsg ? `<span class="small">${esc(pathMsg)}</span>` : ''; return; }
-    const names = path.map((p) => esc(gn(p.name) || p.name)).join(' → ');
-    el.innerHTML = `<span class="dim small">${esc(t('Path ({0} points):', pathCost == null ? '?' : pathCost))}</span> ${names}`
+    // just what the route costs: the node names were a wall of text nobody reads
+    const last = path[path.length - 1];
+    el.innerHTML = `<span class="small">${esc(t('{0} points to reach {1}', pathCost == null ? '?' : pathCost, gn(last.name) || last.name))}</span>`
       + (pathMsg ? ` <span class="small">${esc(pathMsg)}</span>` : '');
   }
 

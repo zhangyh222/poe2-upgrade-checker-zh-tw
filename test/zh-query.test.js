@@ -59,3 +59,12 @@ test('compensation is a word the glossary knows', () => {
   assert.equal(translate('补偿').english, 'compensated');
   assert.equal(translate('補償').english, 'compensated');
 });
+
+test('half a node name is answered by the names catalog', () => {
+  const dict = require('../src/data/zh-tw.json');
+  const { namesFromDict } = require('../src/core/zh-query');
+  const names = namesFromDict('高貴', dict);
+  assert.ok(names.includes('the noble wolf'), JSON.stringify(names.slice(0, 4)));
+  // the article is dropped too, because the tree stores "Noble Wolf"
+  assert.ok(names.includes('noble wolf'), JSON.stringify(names.slice(0, 4)));
+});

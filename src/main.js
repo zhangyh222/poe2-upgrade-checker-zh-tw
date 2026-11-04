@@ -1885,7 +1885,9 @@ ipcMain.handle('nodes:search', async (_e, query, limit) => {
       // the glossary is small: when it misses, ask the game dictionary which English
       // words the phrase appears in, so a word like 補償 does not dead-end
       const dict = zhGameDictShallow();
-      hints = dict ? zh.hintsFromDict(term, dict) : [];
+      // a half-typed name ("高貴") is answered by the names catalog; a stat phrase
+      // ("補償") by the mods. Names come first: a name query is the common case.
+      hints = dict ? [...zh.namesFromDict(term, dict), ...zh.hintsFromDict(term, dict)] : [];
       if (!translated.english) {
         if (!hints.length) {
           return { ok: false, error: { key: 'No English term matches "{0}" yet.', args: [term] }, translated };
