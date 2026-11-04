@@ -212,8 +212,8 @@
     }).join('');
     const moreLeft = searchCtx && searchCtx.from < searchCtx.ids.length;
     const unverifiedLeft = candidates.filter((c) => !verified.some((v) => v.id === c.id)).length;
-    const resultsCard = `<div class="card-p gq-wide"><h3>${t('Candidates')}</h3>`
-      + `<div class="row"><input id="gqBudget" type="number" min="0" step="any" value="${esc(budget)}" placeholder="${t('max price')}"/>`
+    const resultsCard = `<div class="card-p gq-results-card"><h3>${t('Candidates')}</h3>`
+      + `<div class="row gq-toolbar"><input id="gqBudget" type="number" min="0" step="any" value="${esc(budget)}" placeholder="${t('max price')}"/>`
       + `<select id="gqCurrency">`
       + `<option value="chaos"${currency === 'chaos' ? ' selected' : ''}>chaos</option>`
       + `<option value="divine"${currency === 'divine' ? ' selected' : ''}>divine</option>`
@@ -225,7 +225,7 @@
       + `<select id="gqSort"><option value="price"${sortBy === 'price' ? ' selected' : ''}>${t('cheapest first')}</option>`
       + `<option value="verdict"${sortBy === 'verdict' ? ' selected' : ''}>${t('best first')}</option></select>`
       + `<span class="dim small">${esc(workMsg)}</span></div>`
-      + (rows || `<div class="dim small">${t('Nothing searched yet.')}</div>`)
+      + `<div class="gq-results">${rows || `<div class="dim small">${t('Nothing searched yet.')}</div>`}</div>`
       // no results is usually "every affix had to be at least as good as now":
       // offer the one loosening that keeps the requirement honest (a tier floor,
       // not "anything goes") instead of silently relaxing it
@@ -233,7 +233,10 @@
         ? `<div class="gq-hint"><div class="dim small">${t('No candidates. Every affix was required at its current value. Try "same tier" or "not required" on one of them, or raise the price cap.')}</div></div>`
         : '')
       + `</div>`;
-    body.innerHTML = itemCard + guardsCard + resultsCard;
+    // trade-site shape: filters down the left, results on the right, so the thing
+    // you are tuning and the thing it produces are both on screen at once
+    body.innerHTML = `<div class="gq-left">${itemCard}${guardsCard}</div>`
+      + `<div class="gq-right">${resultsCard}</div>`;
   }
 
   async function loadSlot() {
