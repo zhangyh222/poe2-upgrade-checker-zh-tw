@@ -51,7 +51,6 @@
   let draftSet = new Set();
   let draftSel = null;
   let draftMsg = '';
-  let onlySet = false; // hide nodes that only work with the other set
   let lastResult = null; // the last engine answer, so the set filter needs no new call
   let filter = null; // a legend chip picked: highlight/zoom just those nodes
   let dragging = null;
@@ -112,13 +111,25 @@
   function filterMatch(n) {
     switch (filter) {
       case 'on': return !!(n.flags & 8);
-      case 'set1': return setOf(n) === 1;
-      case 'set2': return setOf(n) === 2;
+      // a weapon-set chip keeps the shared trunk visible: the set's own nodes are
+      // only meaningful together with the path that leads to them
+      case 'set1': return setOf(n) !== 2;
+      case 'set2': return setOf(n) !== 1;
       case 'keystone': return !!(n.flags & 2);
       case 'notable': return !!(n.flags & 1);
       case 'ascendancy': return !!(n.flags & 4);
       case 'normal': return !(n.flags & (2 | 1 | 4 | 16));
       default: return true;
+    }
+  }
+
+  // what the chip actually points at: the set's own nodes. The shared trunk is
+  // visible but not ringed, or every node on the tree would get a ring
+  function filterHighlight(n) {
+    switch (filter) {
+      case 'set1': return setOf(n) === 1;
+      case 'set2': return setOf(n) === 2;
+      default: return filterMatch(n);
     }
   }
 
@@ -235,7 +246,7 @@
         ctx.strokeStyle = COLORS.jewel;
         ctx.stroke();
       }
-      if (hover === n || matches.has(n.id) || (filter && keep)) {
+      if (hover === n || matches.has(n.id) || (filter && filterHighlight(n))) {
         ctx.globalAlpha = 1;
         ctx.beginPath();
         ctx.arc(x, y, r + 3, 0, Math.PI * 2);
@@ -410,14 +421,11 @@
       maxShield: 'max ES', esPercent: 'ES %', rechargeRate: 'recharge', rechargeDelay: 'delay',
       spirit: 'spirit', life: 'life', resistances: 'res',
     };
-    // a node that only works with the other weapon set is not a suggestion for this
-    // page; the filter is opt-in because seeing both is sometimes what you want
     const all = result.nodes || [];
-    const shown = onlySet ? all.filter((n) => !n.weaponSet || n.weaponSet === currentSet) : all;
-    const total = onlySet ? shown.length : (result.total == null ? shown.length : result.total);
+    const total = result.total == null ? all.length : result.total;
     // a list you can read and click, not a row of chips: one node per line, name on
     // the left, what it gives in the middle, what it costs on the right
-    const rows = shown.slice(0, 40).map((n) => {
+    const rows = all.slice(0, 40).map((n) => {
       const cost = n.cost == null ? t('not connected') : (n.allocated ? t('already allocated') : t('{0} points away', n.cost));
       const kinds = (n.kinds || []).map((k) => `<small class="kind">${esc(KIND_LABEL[k] || k)}</small>`).join(' ');
       // what the node actually gives, translated the same way the tooltip is: a list
@@ -435,7 +443,7 @@
     const trans = result.translated && result.translated.english
       ? ` <span class="dim small">→ ${esc(result.translated.english)}${result.translated.dropped ? ` (${esc(t('ignored: {0}', result.translated.dropped))})` : ''}</span>`
       : '';
-    const head = `<div class="pass-list-head">${esc(onlySet ? t('{0} matches in weapon set {1}', total, currentSet) : t('{0} matches', total))}${trans}`
+    const head = `<div class="pass-list-head">${esc(t('{0} matches', total))}${trans}`
       + (result.pending ? ` <span class="dim">${esc(t('still asking Path of Building…'))}</span>` : '')
       + (result.localOnly ? ` <span class="dim">${esc(t('names only: the engine did not answer'))}</span>` : '')
       + (result.error ? ` <span class="neg small">${esc(result.error)}</span>` : '')
@@ -686,11 +694,6 @@
     clearTimeout(searchTimer);
     searchTimer = setTimeout(runSearch, 220);
   });
-  // toggling the set filter re-renders the same results, no new engine call
-  $('#passOnlySet').addEventListener('change', (ev) => {
-    onlySet = !!ev.target.checked;
-    if (lastResult) renderResults(lastResult); else draw();
-  });
   $('#passSearch').addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter') return;
     clearTimeout(searchTimer);
@@ -729,7 +732,7 @@
     filter = filter === k ? null : k;
     drawLegend();
     if (!filter) { fitAll(); return; }
-    const list = nodes.filter(filterMatch);
+    const list = nodes.filter(filterHighlight);
     if (list.length) fitTo(list); else draw();
   });
   $('#passLegend').addEventListener('keydown', (ev) => {
