@@ -414,21 +414,28 @@
     // page; the filter is opt-in because seeing both is sometimes what you want
     const all = result.nodes || [];
     const shown = onlySet ? all.filter((n) => !n.weaponSet || n.weaponSet === currentSet) : all;
-    const total = onlySet ? shown.length : result.total;
-    const rows = shown.slice(0, 12).map((n) => {
+    const total = onlySet ? shown.length : (result.total == null ? shown.length : result.total);
+    // a list you can read and click, not a row of chips: one node per line, name on
+    // the left, what it gives in the middle, what it costs on the right
+    const rows = shown.slice(0, 40).map((n) => {
       const cost = n.cost == null ? t('not connected') : (n.allocated ? t('already allocated') : t('{0} points away', n.cost));
-      // what the node actually gives, so "energy shield" matches are not one lump
-      const kinds = (n.kinds || []).map((k) => `<small class="kind">${esc(KIND_LABEL[k] || k)}</small>`).join('');
-      return `<span class="lg pass-hit${n.allocated ? ' on' : ''}" data-node="${n.id}" role="button" tabindex="0">`
-        + `${esc(gn(n.name) || n.name)} ${kinds} <small class="dim">${esc(cost)}</small></span>`;
+      const kinds = (n.kinds || []).map((k) => `<small class="kind">${esc(KIND_LABEL[k] || k)}</small>`).join(' ');
+      return `<button type="button" class="pass-row${n.allocated ? ' on' : ''}" data-node="${n.id}">`
+        + `<span class="pr-name">${esc(gn(n.name) || n.name)}</span>`
+        + `<span class="pr-kinds">${kinds}</span>`
+        + `<span class="pr-cost">${esc(cost)}</span></button>`;
     }).join('');
     // a Chinese query was translated for the engine: say what was actually searched
     const trans = result.translated && result.translated.english
-      ? `<span class="dim small"> → ${esc(result.translated.english)}${result.translated.dropped ? ` (${esc(t('ignored: {0}', result.translated.dropped))})` : ''}</span>`
+      ? ` <span class="dim small">→ ${esc(result.translated.english)}${result.translated.dropped ? ` (${esc(t('ignored: {0}', result.translated.dropped))})` : ''}</span>`
       : '';
+    const head = `<div class="pass-list-head">${esc(onlySet ? t('{0} matches in weapon set {1}', total, currentSet) : t('{0} matches', total))}${trans}`
+      + (result.pending ? ` <span class="dim">${esc(t('still asking Path of Building…'))}</span>` : '')
+      + (result.localOnly ? ` <span class="dim">${esc(t('names only: the engine did not answer'))}</span>` : '')
+      + ` <span class="dim">${esc(t('click a row to centre that node'))}</span></div>`;
     box.innerHTML = rows
-      ? `<span class="dim small">${esc(onlySet ? t('{0} matches in weapon set {1}', total, currentSet) : t('{0} matches', total))}</span>${trans} ${rows}`
-      : `<span class="dim small">${esc(t('Nothing matches that.'))}</span>`;
+      ? `<div class="pass-list">${head}${rows}</div>`
+      : `<div class="dim small">${esc(result.pending ? t('still asking Path of Building…') : t('Nothing matches that.'))}</div>`;
   }
 
   let searchTimer = null;
@@ -441,7 +448,12 @@
     path = null; pathCost = null; renderPathNote(); // a new search is a new question
     if (!q) { lastResult = null; renderResults(null); draw(); return; }
     matches = localMatches(q);
-    renderResults(null);
+    const localList = {
+      nodes: [...matches].map((id) => ({ id, name: (byId.get(id) || {}).name || '', kinds: [], cost: null })).slice(0, 40),
+      total: matches.size, pending: true, localOnly: true,
+    };
+    lastResult = localList;
+    renderResults(localList);
     draw();
     try {
       const r = await window.api.searchNodes(q, 30);
@@ -452,8 +464,15 @@
         searchInfo = new Map((r.nodes || []).map((n) => [n.id, n]));
         renderResults(r);
         draw();
+      } else {
+        // the engine says no: keep the local names so the search still has a list
+        localList.pending = false;
+        renderResults(localList);
       }
-    } catch (_) { /* keep the local matches */ }
+    } catch (_) {
+      localList.pending = false;
+      renderResults(localList);
+    }
   }
 
   let pathMsg = '';

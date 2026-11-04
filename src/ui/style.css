@@ -688,3 +688,13 @@ body.panelwin { user-select: none; overflow-y: auto; }
 .draft-chip.add { color: #7ddc7d; border-color: rgba(125, 220, 125, .5); }
 .draft-chip.remove { color: #e26a5c; border-color: rgba(226, 106, 92, .5); }
 .draft-chip button { line-height: 1; padding: 0 2px; }
+
+/* ---------- passive search results: a list, one node per row ---------- */
+.pass-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--iron); background: #0b0d11; margin: 6px 0; }
+.pass-list-head { position: sticky; top: 0; z-index: 1; background: #0b0d11; padding: 4px 8px; font-size: 12px; color: var(--ash); border-bottom: 1px solid var(--iron); }
+.pass-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; width: 100%; padding: 4px 8px; border: 0; border-bottom: 1px solid rgba(58, 51, 44, .5); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pass-row:hover { background: rgba(201, 164, 99, .12); }
+.pass-row.on { opacity: .62; }
+.pr-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-kinds .kind { margin-right: 4px; }
+.pr-cost { color: var(--ash); font-size: 12px; white-space: nowrap; }
