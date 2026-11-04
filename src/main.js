@@ -1749,27 +1749,21 @@ ipcMain.handle('gearquery:verify', async (_e, payload) => {
     const id = store.data.activeProfile || 'main';
     const own = guardsFor(id);
     const merged = guardLib.mergeGuards({ global: own.global || [], slot: (own.slots || {})[slot] || [], slotName: slot });
-    // no conditions means nothing was checked: that is "unverified", not a pass
-    const noConditions = !merged.effective.length;
-    const out = [];
-    for (const c of candidates || []) {
-      if (!c || !c.text) { out.push({ ...c, status: 'unverified', reason: 'no item text' }); continue; }
-      try {
-        const [r] = await pobEngine().evalItems([{ slot: pobSlot, text: c.text }]);
-        if (!r || !r.ok) { out.push({ ...c, status: 'unverified', reason: (r && r.error) || 'Path of Building could not read this item' }); continue; }
-        const rows = guardLib.evaluateGuards(merged, r.before, r.after, { weaponSet: store.settings.weaponSet || 0 });
-        // the same verdict the popup gives, so "which one is actually better" has an
-        // answer even when every candidate passes the conditions
-        let verdict = null;
-        try {
-          const j = pobVerdict.judge(r.before, r.after, pobWeights());
-          if (j) verdict = { score: j.score, verdict: j.verdict, breaks: (j.breaks || []).length, dpsPct: j.dps ? j.dps.pct : null };
-        } catch (_) { /* a missing verdict is not a failure */ }
-        out.push({ ...c, status: noConditions ? 'unverified' : guardLib.overall(rows), guards: rows, before: r.before, after: r.after, verdict, reason: noConditions ? 'no conditions set' : null });
-      } catch (err) {
-        out.push({ ...c, status: 'unverified', reason: err.message || String(err) });
-      }
-    }
+    // every candidate goes through the chain the results window will share:
+    // engine trial, condition layers, then the popup's verdict. Nothing checked is
+    // "unverified", never a pass.
+    const candidateVerification = require('./core/candidate-verification');
+    const out = await candidateVerification.verifyCandidates({
+      candidates: candidates || [],
+      conditions: merged.effective,
+      evaluate: async (text) => {
+        const [r] = await pobEngine().evalItems([{ slot: pobSlot, text }]);
+        return r;
+      },
+      evaluateGuards: (_conditions, before, after) => guardLib.evaluateGuards(merged, before, after, { weaponSet: store.settings.weaponSet || 0 }),
+      overall: guardLib.overall,
+      judge: (before, after) => pobVerdict.judge(before, after, pobWeights()),
+    });
     return { ok: true, candidates: out, conflicts: merged.conflicts || [] };
   } catch (err) {
     log('gear verify: ' + (err.message || err));
