@@ -438,6 +438,7 @@
     const head = `<div class="pass-list-head">${esc(onlySet ? t('{0} matches in weapon set {1}', total, currentSet) : t('{0} matches', total))}${trans}`
       + (result.pending ? ` <span class="dim">${esc(t('still asking Path of Building…'))}</span>` : '')
       + (result.localOnly ? ` <span class="dim">${esc(t('names only: the engine did not answer'))}</span>` : '')
+      + (result.error ? ` <span class="neg small">${esc(result.error)}</span>` : '')
       + ` <span class="dim">${esc(t('click a row to centre that node'))}</span></div>`;
     box.innerHTML = rows
       ? `<div class="pass-list">${head}${rows}</div>`
@@ -471,12 +472,14 @@
         renderResults(r);
         draw();
       } else {
-        // the engine says no: keep the local names so the search still has a list
+        // the engine says no: keep the local names, and say why in the header
         localList.pending = false;
+        localList.error = r && r.error ? displayError(r.error) : '';
         renderResults(localList);
       }
-    } catch (_) {
+    } catch (err) {
       localList.pending = false;
+      localList.error = String((err && err.message) || err);
       renderResults(localList);
     }
   }

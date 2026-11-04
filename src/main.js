@@ -1855,7 +1855,14 @@ ipcMain.handle('nodes:path', async (_e, id) => {
 // passive node search with the points each match costs from what is allocated
 ipcMain.handle('nodes:search', async (_e, query, limit) => {
   try {
-    if (!pobOn()) return { ok: false, error: { key: 'Path of Building is switched off on My gear (Judge items with Path of Building). Switch it on to see your character sheet.' } };
+    if (!pobOn()) {
+      // say which of the three gates closed: "off", files missing, or no build yet
+      const why = store.settings.usePob === false ? 'switched off in settings'
+        : !pobEngine().available() ? 'engine files missing'
+          : !pobXml() ? 'no build imported' : 'unknown';
+      log(`nodes: search refused (${why})`);
+      return { ok: false, code: 'POB_OFF', error: { key: 'Path of Building is switched off on My gear (Judge items with Path of Building). Switch it on to see your character sheet.' }, why };
+    }
     // the tree and the engine are English: a Chinese phrase is translated first,
     // with the mapping checked against the app's zh-TW game dictionary
     const zh = require('./core/zh-query');
@@ -1878,8 +1885,8 @@ ipcMain.handle('nodes:search', async (_e, query, limit) => {
     if (translated) r.translated = translated;
     return r;
   } catch (err) {
-    log('nodes: ' + (err.message || err));
-    return { ok: false, error: { key: 'Path of Building could not search the passive tree: {0}', args: [err.message || String(err)] } };
+    log('nodes: search failed: ' + (err.message || err));
+    return { ok: false, code: 'POB_ERROR', error: { key: 'Path of Building could not search the passive tree: {0}', args: [err.message || String(err)] } };
   }
 });
 
