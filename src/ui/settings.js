@@ -877,8 +877,10 @@ async function renderPob(load) {
   const el = $('#pobStatus');
   renderPriorities();
   $('#pobUse').checked = state.settings.usePob !== false;
-  // the slider goes from Damage (left) to Survivability (right): its value is the survivability share
-  $('#pobBalance').value = Math.round((1 - (state.settings.pobDamageWeight == null ? 0.6 : state.settings.pobDamageWeight)) * 100);
+  // the Damage/Survivability slider is gone from the page; keep the guard so the
+  // status still renders if it is ever put back
+  const balance = $('#pobBalance');
+  if (balance) balance.value = Math.round((1 - (state.settings.pobDamageWeight == null ? 0.6 : state.settings.pobDamageWeight)) * 100);
   const st = await window.api.pobStatus(!!load);
   $('#pobControls').classList.toggle('hidden', !(st.available && st.hasBuild));
   if (!st.available) { el.innerHTML = `<div class="note">${t('The Path of Building engine isn\'t included in this copy of the app – items are judged by the gear score instead.')}</div>`; return; }
@@ -926,7 +928,7 @@ function renderPriorities() {
   renderPriorities();
 }));
 $('#pobUse').addEventListener('change', async () => { await window.api.pobEnable($('#pobUse').checked); state = await window.api.getState(); renderPob(false); });
-$('#pobBalance').addEventListener('change', async () => { await window.api.setSetting('pobDamageWeight', 1 - Number($('#pobBalance').value) / 100); state = await window.api.getState(); });
+if ($('#pobBalance')) $('#pobBalance').addEventListener('change', async () => { await window.api.setSetting('pobDamageWeight', 1 - Number($('#pobBalance').value) / 100); state = await window.api.getState(); });
 
 
 // ---------- resistances ----------
