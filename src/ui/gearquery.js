@@ -95,15 +95,23 @@
       + `<button type="button" class="link" data-guard="add" data-layer="${layer}">${t('Add')}</button></div>`;
   }
 
+  // The affix text is English because the trade site and the tier table are: only
+  // the copy shown here is translated. Whatever is sent to the trade search stays
+  // the original string, or nothing would match and no tier would be found.
+  const shown = (text) => {
+    const out = window.gdText ? window.gdText(text) : text;
+    return out && String(out).trim() ? out : text;
+  };
+
   function lineHtml(line) {
     const m = line.match;
-    if (!m) return `<div class="gq-line unknown"><span class="grow">${esc(line.text)}</span><small class="dim">${t('no tier')}</small></div>`;
+    if (!m) return `<div class="gq-line unknown"><span class="grow">${esc(shown(line.text))}</span><small class="dim">${t('no tier')}</small></div>`;
     const choice = choices.get(line.text) || { action: 'keep', tier: m.tier };
     const maxTier = line.tiers ? line.tiers.length : m.tier;
     return `<div class="gq-line">
-      <div class="row"><span class="grow">${esc(line.text)}</span>
+      <div class="row"><span class="grow">${esc(shown(line.text))}</span>
         <span class="tier${m.confidence === 'range-only' ? ' dim' : ''}">T${m.tier}</span>
-        <small class="dim">${esc(m.group)}</small></div>
+        <small class="dim" title="${esc(m.group)}">${esc(shown(m.group))}</small></div>
       <div class="row gq-slider">
         <label class="dim small">${t('keep at least')} <b data-gq-tier>${t('T{0}', choice.tier)}</b></label>
         <input type="range" min="1" max="${Math.max(1, maxTier)}" value="${choice.tier}" data-gq-slider="${esc(line.text)}"/>
@@ -134,8 +142,8 @@
       + `<h4 class="small">${t('Additional requirements')}</h4>`
       + `<div class="row"><input id="gqFind" class="text grow" placeholder="${esc(t('Find an affix…'))}"/>`
       + `<button type="button" class="link" data-gq="findaffix">${t('Search')}</button></div>`
-      + (findGroups.length ? `<div class="row gq-find">${findGroups.map((g) => `<span class="lg" data-addgroup="${esc(g.group)}" title="${esc(g.group)}" role="button" tabindex="0">${esc(g.label || g.group)} <small class="dim">${g.tierCount}</small></span>`).join('')}</div>` : (findMsg ? `<div class="dim small">${esc(findMsg)}</div>` : ''))
-      + extras.map((x, i) => `<div class="row gq-extra"><span class="grow" title="${esc(x.group)}">${esc(x.label || x.group)}</span>`
+      + (findGroups.length ? `<div class="row gq-find">${findGroups.map((g) => `<span class="lg" data-addgroup="${esc(g.group)}" title="${esc(g.group)}" role="button" tabindex="0">${esc(shown(g.label || g.group))} <small class="dim">${g.tierCount}</small></span>`).join('')}</div>` : (findMsg ? `<div class="dim small">${esc(findMsg)}</div>` : ''))
+      + extras.map((x, i) => `<div class="row gq-extra"><span class="grow" title="${esc(x.group)}">${esc(shown(x.label || x.group))}</span>`
         + `<label class="dim small">${t('at least')} <b>${t('T{0}', x.tier)}</b></label>`
         + `<input type="range" min="1" max="${Math.max(1, x.tierCount)}" value="${x.tier}" data-extra-slider="${i}"/>`
         + `<button type="button" class="link" data-removeextra="${i}">${t('Remove')}</button></div>`).join('')
